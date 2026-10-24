@@ -1,0 +1,39 @@
+{
+  "_echo-B8yWtpLk.js": {
+    "file": "assets/echo-B8yWtpLk.js",
+    "name": "echo"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-Bl-vxXia.css",
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "name": "app",
+    "names": [
+      "app.css"
+    ]
+  },
+  "resources/js/inertia.js": {
+    "file": "assets/inertia-BgjTZvvY.js",
+    "name": "inertia",
+    "src": "resources/js/inertia.js",
+    "isEntry": true,
+    "imports": [
+      "_echo-B8yWtpLk.js"
+    ],
+    "css": [
+      "assets/inertia-D1alG36_.css"
+    ]
+  },
+  "resources/js/spa.js": {
+    "file": "assets/spa-BnzN0j0-.js",
+    "name": "spa",
+    "src": "resources/js/spa.js",
+    "isEntry": true,
+    "imports": [
+      "_echo-B8yWtpLk.js"
+    ],
+    "css": [
+      "assets/spa-uzPedPDe.css"
+    ]
+  }
+}
