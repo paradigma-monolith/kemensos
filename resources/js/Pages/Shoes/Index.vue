@@ -766,66 +766,9 @@ const excelExportUrl = computed(() => {
       </div>
 
       <!-- TAB 3: DAFTAR SEKOLAH & BATCH IMPORT -->
-      <div v-if="activeTab === 'batches'" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div
-            v-for="sc in schools"
-            :key="sc.id"
-            class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
-          >
-            <div class="flex items-start justify-between">
-              <div>
-                <h3 class="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                  <SchoolIcon class="w-4 h-4 text-indigo-500" />
-                  {{ sc.nama_sekolah }}
-                </h3>
-                <p v-if="sc.kota" class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                  <MapPin class="w-3.5 h-3.5" /> {{ sc.kota }}
-                </p>
-              </div>
-              <span class="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                {{ sc.recipients_count }} Pasang
-              </span>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <div>
-                <span class="text-slate-400">PIC Ukur:</span> {{ sc.pic_nama || '-' }}
-              </div>
-              <div>
-                <span class="text-slate-400">Kepsek:</span> {{ sc.kepala_sekolah_nama || '-' }}
-              </div>
-              <div>
-                <span class="text-slate-400">NIP:</span> {{ sc.kepala_sekolah_nip || '-' }}
-              </div>
-              <div>
-                <span class="text-slate-400">Tgl Konfirmasi:</span> {{ sc.tanggal_konfirmasi || '-' }}
-              </div>
-            </div>
-
-            <div class="pt-2 flex items-center justify-between text-xs border-t border-slate-100 dark:border-slate-800">
-              <span class="text-slate-400">{{ sc.import_batches_count }}x Berkas Import</span>
-              <div class="flex items-center gap-3">
-                <button
-                  @click="openEditSchoolModal(sc)"
-                  class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer"
-                  title="Ubah Nama PIC atau Data Sekolah"
-                >
-                  <Edit2 class="w-3.5 h-3.5" /> Ubah PIC
-                </button>
-                <button
-                  @click="deleteSchool(sc.id, sc.nama_sekolah)"
-                  class="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 class="w-3.5 h-3.5" /> Hapus
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Import Batches History -->
-        <div class="mt-8">
+      <div v-if="activeTab === 'batches'" class="space-y-8">
+        <!-- Import Batches History (Paling Atas) -->
+        <div>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
             <div>
               <h2 class="text-base font-bold text-slate-900 dark:text-white">
@@ -889,8 +832,79 @@ const excelExportUrl = computed(() => {
                     </div>
                   </td>
                 </tr>
+                <tr v-if="batches.length === 0">
+                  <td colspan="6" class="py-8 text-center text-slate-500">
+                    Belum ada berkas Excel yang di-import.
+                  </td>
+                </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Daftar Sekolah Terdaftar -->
+        <div>
+          <div class="mb-3">
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">
+              Daftar Sekolah Terdaftar
+            </h2>
+            <p class="text-xs text-slate-500">Ringkasan per sekolah, status PIC ukur, dan data kepala sekolah.</p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              v-for="sc in schools"
+              :key="sc.id"
+              class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+            >
+              <div class="flex items-start justify-between">
+                <div>
+                  <h3 class="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <SchoolIcon class="w-4 h-4 text-indigo-500" />
+                    {{ sc.nama_sekolah }}
+                  </h3>
+                  <p v-if="sc.kota" class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                    <MapPin class="w-3.5 h-3.5" /> {{ sc.kota }}
+                  </p>
+                </div>
+                <span class="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                  {{ sc.recipients_count }} Pasang
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <span class="text-slate-400">PIC Ukur:</span> {{ sc.pic_nama || '-' }}
+                </div>
+                <div>
+                  <span class="text-slate-400">Kepsek:</span> {{ sc.kepala_sekolah_nama || '-' }}
+                </div>
+                <div>
+                  <span class="text-slate-400">NIP:</span> {{ sc.kepala_sekolah_nip || '-' }}
+                </div>
+                <div>
+                  <span class="text-slate-400">Tgl Konfirmasi:</span> {{ sc.tanggal_konfirmasi || '-' }}
+                </div>
+              </div>
+
+              <div class="pt-2 flex items-center justify-between text-xs border-t border-slate-100 dark:border-slate-800">
+                <span class="text-slate-400">{{ sc.import_batches_count }}x Berkas Import</span>
+                <div class="flex items-center gap-3">
+                  <button
+                    @click="openEditSchoolModal(sc)"
+                    class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer"
+                    title="Ubah Nama PIC atau Data Sekolah"
+                  >
+                    <Edit2 class="w-3.5 h-3.5" /> Ubah PIC
+                  </button>
+                  <button
+                    @click="deleteSchool(sc.id, sc.nama_sekolah)"
+                    class="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" /> Hapus
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
