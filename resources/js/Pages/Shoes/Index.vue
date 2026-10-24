@@ -704,7 +704,10 @@ const excelExportUrl = computed(() => {
                   {{ rec.nama_lengkap }}
                 </td>
                 <td class="py-3 px-4 text-slate-600 dark:text-slate-400">
-                  {{ rec.school?.nama_sekolah || '-' }}
+                  <div class="font-medium text-slate-900 dark:text-slate-100">{{ rec.school?.nama_sekolah || '-' }}</div>
+                  <div v-if="rec.school?.pic_nama" class="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                    <UserCheck class="w-3 h-3 text-indigo-500" /> PIC: {{ rec.school.pic_nama }}
+                  </div>
                 </td>
                 <td class="py-3 px-4 text-center">
                   <span
@@ -792,6 +795,7 @@ const excelExportUrl = computed(() => {
                 <tr>
                   <th class="py-3 px-4">Nama File</th>
                   <th class="py-3 px-4">Sekolah</th>
+                  <th class="py-3 px-4">PIC Ukur</th>
                   <th class="py-3 px-4 text-center">Total Sepatu</th>
                   <th class="py-3 px-4 text-center">Rincian (S / G / T)</th>
                   <th class="py-3 px-4">Waktu Import</th>
@@ -803,7 +807,17 @@ const excelExportUrl = computed(() => {
                   <td class="py-3 px-4 font-mono font-medium text-slate-800 dark:text-slate-200">
                     {{ b.file_name }}
                   </td>
-                  <td class="py-3 px-4">{{ b.school?.nama_sekolah || '-' }}</td>
+                  <td class="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{{ b.school?.nama_sekolah || '-' }}</td>
+                  <td class="py-3 px-4">
+                    <span
+                      v-if="b.school?.pic_nama"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60"
+                    >
+                      <UserCheck class="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                      {{ b.school.pic_nama }}
+                    </span>
+                    <span v-else class="text-slate-400 italic text-xs">Belum diatur</span>
+                  </td>
                   <td class="py-3 px-4 text-center font-bold text-indigo-600 dark:text-indigo-400 font-mono">
                     {{ b.total_sepatu }}
                   </td>
@@ -833,7 +847,7 @@ const excelExportUrl = computed(() => {
                   </td>
                 </tr>
                 <tr v-if="batches.length === 0">
-                  <td colspan="6" class="py-8 text-center text-slate-500">
+                  <td colspan="7" class="py-8 text-center text-slate-500">
                     Belum ada berkas Excel yang di-import.
                   </td>
                 </tr>
