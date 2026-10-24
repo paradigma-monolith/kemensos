@@ -152,21 +152,25 @@ Route::get('/clear-cache', function () {
         'unzipped' => $unzipped,
         'base_path' => base_path(),
         'public_path' => public_path(),
+        'document_root' => $_SERVER['DOCUMENT_ROOT'] ?? 'unknown',
+        'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
+        'script_filename' => $_SERVER['SCRIPT_FILENAME'] ?? 'unknown',
         'assets_count' => is_dir($assetsDir) ? count(glob($assetsDir . '/*')) : 0,
         'assets_sample' => is_dir($assetsDir) ? array_map('basename', array_slice(glob($assetsDir . '/*'), 0, 10)) : [],
     ]);
 });
 
 // Robust Fallback Route: Serve CSS and JS dynamically if an asset hash is requested
-Route::get('/build/assets/{filename}', function ($filename) {
+Route::match(['GET', 'HEAD'], '/build/assets/{filename}', function ($filename) {
     $searchCandidates = [
         public_path('build/assets/' . $filename),
         base_path('public/build/assets/' . $filename),
         base_path('public_html/build/assets/' . $filename),
+        (isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] . '/build/assets/' . $filename : ''),
     ];
 
     foreach ($searchCandidates as $candidate) {
-        if (file_exists($candidate)) {
+        if (!empty($candidate) && file_exists($candidate)) {
             $mime = str_ends_with($filename, '.css')
                 ? 'text/css; charset=UTF-8'
                 : (str_ends_with($filename, '.js') ? 'application/javascript; charset=UTF-8' : 'application/octet-stream');
@@ -180,9 +184,13 @@ Route::get('/build/assets/{filename}', function ($filename) {
     // Dynamic fallback for JS modules
     if (str_ends_with($filename, '.js')) {
         $prefix = explode('-', $filename)[0]; // e.g. 'inertia', 'echo', 'spa'
-        $dirs = [public_path('build/assets'), base_path('public/build/assets')];
+        $dirs = [
+            public_path('build/assets'),
+            base_path('public/build/assets'),
+            isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] . '/build/assets' : null,
+        ];
         foreach ($dirs as $d) {
-            if (is_dir($d)) {
+            if (!empty($d) && is_dir($d)) {
                 $matches = glob($d . '/' . $prefix . '-*.js');
                 if (!empty($matches)) {
                     return response(file_get_contents($matches[0]), 200, [
@@ -196,9 +204,13 @@ Route::get('/build/assets/{filename}', function ($filename) {
 
     // Dynamic fallback for CSS
     if (str_ends_with($filename, '.css')) {
-        $dirs = [public_path('build/assets'), base_path('public/build/assets')];
+        $dirs = [
+            public_path('build/assets'),
+            base_path('public/build/assets'),
+            isset($_SERVER['DOCUMENT_ROOT']) ? $_SERVER['DOCUMENT_ROOT'] . '/build/assets' : null,
+        ];
         foreach ($dirs as $d) {
-            if (is_dir($d)) {
+            if (!empty($d) && is_dir($d)) {
                 $matches = glob($d . '/*.css');
                 if (!empty($matches)) {
                     return response(file_get_contents($matches[0]), 200, [
@@ -210,6 +222,6 @@ Route::get('/build/assets/{filename}', function ($filename) {
         }
     }
 
-    abort(404);
+    return response("Asset not found: " . htmlspecialchars($filename), 404, ['Content-Type' => 'text/plain']);
 })->where('filename', '.*');
 
