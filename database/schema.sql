@@ -136,8 +136,8 @@ CREATE TABLE `shoe_recipients` (
 DROP TABLE IF EXISTS `permissions`;
 CREATE TABLE `permissions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(255) NOT NULL,
-  `guard_name` VARCHAR(255) NOT NULL,
+  `name` VARCHAR(125) NOT NULL,
+  `guard_name` VARCHAR(50) NOT NULL,
   `created_at` TIMESTAMP NULL DEFAULT NULL,
   `updated_at` TIMESTAMP NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -147,8 +147,8 @@ CREATE TABLE `permissions` (
 DROP TABLE IF EXISTS `roles`;
 CREATE TABLE `roles` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(255) NOT NULL,
-  `guard_name` VARCHAR(255) NOT NULL,
+  `name` VARCHAR(125) NOT NULL,
+  `guard_name` VARCHAR(50) NOT NULL,
   `created_at` TIMESTAMP NULL DEFAULT NULL,
   `updated_at` TIMESTAMP NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -158,7 +158,7 @@ CREATE TABLE `roles` (
 DROP TABLE IF EXISTS `model_has_permissions`;
 CREATE TABLE `model_has_permissions` (
   `permission_id` BIGINT UNSIGNED NOT NULL,
-  `model_type` VARCHAR(255) NOT NULL,
+  `model_type` VARCHAR(125) NOT NULL,
   `model_id` BIGINT UNSIGNED NOT NULL,
   PRIMARY KEY (`permission_id`, `model_id`, `model_type`),
   KEY `model_has_permissions_model_id_model_type_index` (`model_id`, `model_type`),
@@ -168,7 +168,7 @@ CREATE TABLE `model_has_permissions` (
 DROP TABLE IF EXISTS `model_has_roles`;
 CREATE TABLE `model_has_roles` (
   `role_id` BIGINT UNSIGNED NOT NULL,
-  `model_type` VARCHAR(255) NOT NULL,
+  `model_type` VARCHAR(125) NOT NULL,
   `model_id` BIGINT UNSIGNED NOT NULL,
   PRIMARY KEY (`role_id`, `model_id`, `model_type`),
   KEY `model_has_roles_model_id_model_type_index` (`model_id`, `model_type`),
