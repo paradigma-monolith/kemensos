@@ -175,6 +175,9 @@ class ShoeRecapTest extends TestCase
         // Verify Kepala Sekolah column is removed and replaced with Petugas Ukur / PIC
         $this->assertNotEquals('Kepala Sekolah', $rekapPerSchoolSheet->getCell('D4')->getValue());
         $this->assertEquals('Petugas Ukur / PIC', $rekapPerSchoolSheet->getCell('D4')->getValue());
+        // Verify Ukuran Dominan column is removed and column M is TOTAL PASANG
+        $this->assertNotEquals('Ukuran Dominan', $rekapPerSchoolSheet->getCell('M4')->getValue());
+        $this->assertEquals('TOTAL PASANG', $rekapPerSchoolSheet->getCell('M4')->getValue());
 
         // Check Rekap Ukuran Sepatu sheet: verify Ukuran Top is removed
         $rekapUkuranSheet = $spreadsheet->getSheetByName('Rekap Ukuran Sepatu');

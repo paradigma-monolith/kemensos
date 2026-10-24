@@ -363,17 +363,17 @@ class ShoeExportService
             $usedSheetTitles[] = 'rekap per sekolah';
 
             // Title
-            $sheetPerSchool->mergeCells('A1:N1');
+            $sheetPerSchool->mergeCells('A1:M1');
             $sheetPerSchool->setCellValue('A1', 'REKAPITULASI KEBUTUHAN PENGADAAN SEPATU PER SEKOLAH');
             $sheetPerSchool->getStyle('A1')->getFont()->setBold(true)->setSize(15)->getColor()->setRGB('1E293B');
             $sheetPerSchool->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-            $sheetPerSchool->mergeCells('A2:N2');
+            $sheetPerSchool->mergeCells('A2:M2');
             $sheetPerSchool->setCellValue('A2', 'KEMENTERIAN SOSIAL RI — TAHUN ' . date('Y'));
             $sheetPerSchool->getStyle('A2')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('475569');
             $sheetPerSchool->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-            // Table 1: Ringkasan Data Setiap Sekolah (Tanpa Kolom Kepala Sekolah)
+            // Table 1: Ringkasan Data Setiap Sekolah (Tanpa Kolom Kepala Sekolah & Ukuran Dominan)
             $sheetPerSchool->setCellValue('A4', 'No');
             $sheetPerSchool->setCellValue('B4', 'Nama Sekolah');
             $sheetPerSchool->setCellValue('C4', 'Kota / Wilayah');
@@ -386,10 +386,9 @@ class ShoeExportService
             $sheetPerSchool->setCellValue('J4', 'Total Staff');
             $sheetPerSchool->setCellValue('K4', 'Total Pria');
             $sheetPerSchool->setCellValue('L4', 'Total Wanita');
-            $sheetPerSchool->setCellValue('M4', 'Ukuran Dominan');
-            $sheetPerSchool->setCellValue('N4', 'TOTAL PASANG');
+            $sheetPerSchool->setCellValue('M4', 'TOTAL PASANG');
 
-            $sheetPerSchool->getStyle('A4:N4')->applyFromArray($headerStyleIndigo);
+            $sheetPerSchool->getStyle('A4:M4')->applyFromArray($headerStyleIndigo);
             $sheetPerSchool->getRowDimension(4)->setRowHeight(26);
 
             $tbl1Rows = [];
@@ -412,15 +411,6 @@ class ShoeExportService
                 $wanita = $st['wanita'];
                 $totalPasang = $st['total'];
 
-                $dominantSize = '-';
-                if (!empty($st['size_counts'])) {
-                    $counts = $st['size_counts'];
-                    arsort($counts);
-                    $topSz = key($counts);
-                    $topCnt = current($counts);
-                    $dominantSize = "Size {$topSz} ({$topCnt})";
-                }
-
                 $tbl1Rows[] = [
                     $noTbl1++,
                     $this->sanitizeCellValue($sch->nama_sekolah),
@@ -434,7 +424,6 @@ class ShoeExportService
                     $totStaff,
                     $pria,
                     $wanita,
-                    $dominantSize,
                     $totalPasang,
                 ];
             }
@@ -442,8 +431,8 @@ class ShoeExportService
             $sheetPerSchool->fromArray($tbl1Rows, null, 'A5');
             $endTbl1 = 4 + count($tbl1Rows);
             $sheetPerSchool->getStyle("A5:A{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetPerSchool->getStyle("E5:N{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetPerSchool->getStyle("A5:N{$endTbl1}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $sheetPerSchool->getStyle("E5:M{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPerSchool->getStyle("A5:M{$endTbl1}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
 
             // Total row Table 1
             $totRowTbl1 = $endTbl1 + 1;
@@ -457,9 +446,8 @@ class ShoeExportService
             $sheetPerSchool->setCellValue("J{$totRowTbl1}", $totStaffL + $totStaffP);
             $sheetPerSchool->setCellValue("K{$totRowTbl1}", $totPria);
             $sheetPerSchool->setCellValue("L{$totRowTbl1}", $totWanita);
-            $sheetPerSchool->setCellValue("M{$totRowTbl1}", '-');
-            $sheetPerSchool->setCellValue("N{$totRowTbl1}", $grandTotal);
-            $sheetPerSchool->getStyle("A{$totRowTbl1}:N{$totRowTbl1}")->applyFromArray($totalRowStyle);
+            $sheetPerSchool->setCellValue("M{$totRowTbl1}", $grandTotal);
+            $sheetPerSchool->getStyle("A{$totRowTbl1}:M{$totRowTbl1}")->applyFromArray($totalRowStyle);
             $sheetPerSchool->getRowDimension($totRowTbl1)->setRowHeight(24);
 
             // Table 2: Matriks Distribusi Ukuran Sepatu Setiap Sekolah (Cross-tab)
@@ -536,8 +524,7 @@ class ShoeExportService
             $sheetPerSchool->getColumnDimension('J')->setWidth(14); // Total Staff
             $sheetPerSchool->getColumnDimension('K')->setWidth(14); // Total Pria
             $sheetPerSchool->getColumnDimension('L')->setWidth(14); // Total Wanita
-            $sheetPerSchool->getColumnDimension('M')->setWidth(18); // Ukuran Dominan
-            $sheetPerSchool->getColumnDimension('N')->setWidth(16); // TOTAL PASANG
+            $sheetPerSchool->getColumnDimension('M')->setWidth(16); // TOTAL PASANG
 
             for ($c = 4; $c <= 3 + count($sizes); $c++) {
                 $colLet = $this->getColumnLetter($c);
