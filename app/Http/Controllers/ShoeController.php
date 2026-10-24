@@ -269,6 +269,10 @@ class ShoeController extends Controller
      */
     public function exportExcel(Request $request): StreamedResponse
     {
+        @ini_set('memory_limit', '1024M');
+        @ini_set('max_execution_time', '300');
+        @set_time_limit(300);
+
         $schoolId = $request->query('school_id');
         $spreadsheet = $this->exportService->generateRecapExcel($schoolId ? (int)$schoolId : null);
 
@@ -282,9 +286,19 @@ class ShoeController extends Controller
         $fileName = "Rekap_Sepatu_{$schoolPrefix}_" . date('Ymd_His') . ".xlsx";
 
         return response()->streamDownload(function () use ($spreadsheet) {
+            @ini_set('memory_limit', '1024M');
+            @ini_set('max_execution_time', '300');
+            @set_time_limit(300);
+
             $writer = new Xlsx($spreadsheet);
             $writer->setPreCalculateFormulas(false);
             $writer->save('php://output');
+
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Cache-Control' => 'max-age=0',

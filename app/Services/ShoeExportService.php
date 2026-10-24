@@ -15,13 +15,21 @@ class ShoeExportService
      * Generate an Excel spreadsheet with Recap Matrix, Per-School Tables,
      * and Detailed Recipient Lists.
      *
-     * Highly optimized for fast generation, low memory consumption, and formula-safe values.
+     * Highly optimized for large scale data:
+     * - Elevates memory_limit and max_execution_time to prevent script timeouts.
+     * - Single O(N) pre-aggregation pass eliminates thousands of collection filter passes.
+     * - Selects only necessary columns and maps schools by ID (no heavy Eloquent hydration).
+     * - Memory-safe styling avoiding Coordinate reference explosion on massive rows.
      *
      * @param int|null $schoolId Filter by specific school or null for all schools
      * @return Spreadsheet
      */
     public function generateRecapExcel(?int $schoolId = null): Spreadsheet
     {
+        @ini_set('memory_limit', '1024M');
+        @ini_set('max_execution_time', '300');
+        @set_time_limit(300);
+
         $spreadsheet = new Spreadsheet();
         $usedSheetTitles = [];
 
@@ -73,25 +81,112 @@ class ShoeExportService
         $sizes = array_unique(array_merge(range(26, 46), array_map('intval', $availableSizes)));
         sort($sizes);
 
-        // Fetch schools and pre-grouped recipients
+        // Fetch schools and create fast ID lookup map
         $schoolsQuery = School::query();
         if ($schoolId) {
             $schoolsQuery->where('id', $schoolId);
         }
         $schools = $schoolsQuery->orderBy('nama_sekolah')->get();
+        $schoolsMap = $schools->keyBy('id');
 
-        $allRecipientsQuery = ShoeRecipient::with('school')->orderBy('school_id')->orderBy('kategori')->orderBy('nomor_urut');
+        // Fetch recipients with only necessary fields to minimize Eloquent hydration overhead
+        $allRecipientsQuery = ShoeRecipient::query()
+            ->select(['id', 'school_id', 'nomor_urut', 'nama_lengkap', 'jenis_kelamin', 'jabatan', 'kategori', 'panjang_kaki', 'ukuran_sepatu'])
+            ->orderBy('school_id')
+            ->orderBy('kategori')
+            ->orderBy('nomor_urut');
+
         if ($schoolId) {
             $allRecipientsQuery->where('school_id', $schoolId);
         }
         $allRecipients = $allRecipientsQuery->get();
-        $recipientsBySchool = $allRecipients->groupBy('school_id');
+
+        // Single-pass O(N) aggregation: pre-computes size, school, and cross-tab stats
+        $statsBySize = [];
+        $statsBySchool = [];
+        $recipientsBySchool = [];
+
+        foreach ($allRecipients as $r) {
+            $sz = (int)$r->ukuran_sepatu;
+            $schId = (int)$r->school_id;
+            $isL = ($r->jenis_kelamin === 'L');
+            $isSiswa = ($r->kategori === 'siswa');
+            $isStaff = in_array($r->kategori, ['guru', 'tendik'], true);
+
+            if (!isset($statsBySize[$sz])) {
+                $statsBySize[$sz] = [
+                    'siswa_l' => 0, 'siswa_p' => 0,
+                    'staff_l' => 0, 'staff_p' => 0,
+                    'total_pria' => 0, 'total_wanita' => 0,
+                    'total' => 0,
+                ];
+            }
+
+            if (!isset($statsBySchool[$schId])) {
+                $statsBySchool[$schId] = [
+                    'siswa_l' => 0, 'siswa_p' => 0,
+                    'staff_l' => 0, 'staff_p' => 0,
+                    'pria' => 0, 'wanita' => 0,
+                    'total' => 0,
+                    'sizes' => [],
+                    'size_counts' => [],
+                ];
+                $recipientsBySchool[$schId] = [];
+            }
+
+            if (!isset($statsBySchool[$schId]['sizes'][$sz])) {
+                $statsBySchool[$schId]['sizes'][$sz] = [
+                    'siswa_l' => 0, 'siswa_p' => 0,
+                    'staff_l' => 0, 'staff_p' => 0,
+                    'total' => 0,
+                ];
+                $statsBySchool[$schId]['size_counts'][$sz] = 0;
+            }
+
+            if ($isSiswa) {
+                if ($isL) {
+                    $statsBySize[$sz]['siswa_l']++;
+                    $statsBySchool[$schId]['siswa_l']++;
+                    $statsBySchool[$schId]['sizes'][$sz]['siswa_l']++;
+                } else {
+                    $statsBySize[$sz]['siswa_p']++;
+                    $statsBySchool[$schId]['siswa_p']++;
+                    $statsBySchool[$schId]['sizes'][$sz]['siswa_p']++;
+                }
+            } elseif ($isStaff) {
+                if ($isL) {
+                    $statsBySize[$sz]['staff_l']++;
+                    $statsBySchool[$schId]['staff_l']++;
+                    $statsBySchool[$schId]['sizes'][$sz]['staff_l']++;
+                } else {
+                    $statsBySize[$sz]['staff_p']++;
+                    $statsBySchool[$schId]['staff_p']++;
+                    $statsBySchool[$schId]['sizes'][$sz]['staff_p']++;
+                }
+            }
+
+            if ($isL) {
+                $statsBySize[$sz]['total_pria']++;
+                $statsBySchool[$schId]['pria']++;
+            } else {
+                $statsBySize[$sz]['total_wanita']++;
+                $statsBySchool[$schId]['wanita']++;
+            }
+
+            $statsBySize[$sz]['total']++;
+            $statsBySchool[$schId]['total']++;
+            $statsBySchool[$schId]['sizes'][$sz]['total']++;
+            $statsBySchool[$schId]['size_counts'][$sz]++;
+
+            $recipientsBySchool[$schId][] = $r;
+        }
 
         // ====================================================
         // SHEET 1: REKAP UKURAN SEPATU (GLOBAL SIZE BREAKDOWN)
         // ====================================================
         $sheet1 = $spreadsheet->getActiveSheet();
         $sheet1->setTitle('Rekap Ukuran Sepatu');
+        $sheet1->setShowGridlines(true);
         $usedSheetTitles[] = 'rekap ukuran sepatu';
 
         // Title
@@ -126,14 +221,13 @@ class ShoeExportService
         $totPria = 0; $totWanita = 0; $grandTotal = 0;
 
         foreach ($sizes as $s) {
-            $matching = $allRecipients->where('ukuran_sepatu', $s);
-            $cntSiswaL = $matching->where('kategori', 'siswa')->where('jenis_kelamin', 'L')->count();
-            $cntSiswaP = $matching->where('kategori', 'siswa')->where('jenis_kelamin', 'P')->count();
-            $cntStaffL = $matching->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'L')->count();
-            $cntStaffP = $matching->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'P')->count();
-            $cntPria = $matching->where('jenis_kelamin', 'L')->count();
-            $cntWanita = $matching->where('jenis_kelamin', 'P')->count();
-            $cntTotal = $matching->count();
+            $data = $statsBySize[$s] ?? [
+                'siswa_l' => 0, 'siswa_p' => 0,
+                'staff_l' => 0, 'staff_p' => 0,
+                'total_pria' => 0, 'total_wanita' => 0,
+                'total' => 0,
+            ];
+            $cntTotal = $data['total'];
 
             // Skip zero rows if total is 0 and size is outside standard 26-46
             if ($cntTotal === 0 && ($s < 26 || $s > 46)) {
@@ -143,21 +237,21 @@ class ShoeExportService
             $sizeRows[] = [
                 $noSize++,
                 $s,
-                $cntSiswaL,
-                $cntSiswaP,
-                $cntStaffL,
-                $cntStaffP,
-                $cntPria,
-                $cntWanita,
+                $data['siswa_l'],
+                $data['siswa_p'],
+                $data['staff_l'],
+                $data['staff_p'],
+                $data['total_pria'],
+                $data['total_wanita'],
                 $cntTotal,
             ];
 
-            $totSiswaL += $cntSiswaL;
-            $totSiswaP += $cntSiswaP;
-            $totStaffL += $cntStaffL;
-            $totStaffP += $cntStaffP;
-            $totPria += $cntPria;
-            $totWanita += $cntWanita;
+            $totSiswaL += $data['siswa_l'];
+            $totSiswaP += $data['siswa_p'];
+            $totStaffL += $data['staff_l'];
+            $totStaffP += $data['staff_p'];
+            $totPria += $data['total_pria'];
+            $totWanita += $data['total_wanita'];
             $grandTotal += $cntTotal;
         }
 
@@ -205,22 +299,21 @@ class ShoeExportService
             $schRows = [];
             $noSch = 1;
             foreach ($schools as $sch) {
-                $schRecs = $recipientsBySchool->get($sch->id, collect());
-                $sL = $schRecs->where('kategori', 'siswa')->where('jenis_kelamin', 'L')->count();
-                $sP = $schRecs->where('kategori', 'siswa')->where('jenis_kelamin', 'P')->count();
-                $stL = $schRecs->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'L')->count();
-                $stP = $schRecs->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'P')->count();
-                $tot = $schRecs->count();
+                $st = $statsBySchool[$sch->id] ?? [
+                    'siswa_l' => 0, 'siswa_p' => 0,
+                    'staff_l' => 0, 'staff_p' => 0,
+                    'total' => 0,
+                ];
 
                 $schRows[] = [
                     $noSch++,
                     $this->sanitizeCellValue($sch->nama_sekolah),
                     $this->sanitizeCellValue($sch->kota ?? 'Indonesia'),
-                    $sL,
-                    $sP,
-                    $stL,
-                    $stP,
-                    $tot,
+                    $st['siswa_l'],
+                    $st['siswa_p'],
+                    $st['staff_l'],
+                    $st['staff_p'],
+                    $st['total'],
                 ];
             }
 
@@ -266,6 +359,7 @@ class ShoeExportService
         if (!$schoolId && $schools->isNotEmpty()) {
             $sheetPerSchool = $spreadsheet->createSheet();
             $sheetPerSchool->setTitle('Rekap Per Sekolah');
+            $sheetPerSchool->setShowGridlines(true);
             $usedSheetTitles[] = 'rekap per sekolah';
 
             // Title
@@ -302,22 +396,29 @@ class ShoeExportService
             $tbl1Rows = [];
             $noTbl1 = 1;
             foreach ($schools as $sch) {
-                $schRecs = $recipientsBySchool->get($sch->id, collect());
-                $sL = $schRecs->where('kategori', 'siswa')->where('jenis_kelamin', 'L')->count();
-                $sP = $schRecs->where('kategori', 'siswa')->where('jenis_kelamin', 'P')->count();
-                $stL = $schRecs->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'L')->count();
-                $stP = $schRecs->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'P')->count();
+                $st = $statsBySchool[$sch->id] ?? [
+                    'siswa_l' => 0, 'siswa_p' => 0,
+                    'staff_l' => 0, 'staff_p' => 0,
+                    'pria' => 0, 'wanita' => 0,
+                    'total' => 0,
+                    'size_counts' => [],
+                ];
+                $sL = $st['siswa_l'];
+                $sP = $st['siswa_p'];
+                $stL = $st['staff_l'];
+                $stP = $st['staff_p'];
                 $totSiswa = $sL + $sP;
                 $totStaff = $stL + $stP;
-                $pria = $sL + $stL;
-                $wanita = $sP + $stP;
-                $totalPasang = $totSiswa + $totStaff;
+                $pria = $st['pria'];
+                $wanita = $st['wanita'];
+                $totalPasang = $st['total'];
 
-                $sizeCounts = $schRecs->groupBy('ukuran_sepatu')->map->count();
                 $dominantSize = '-';
-                if ($sizeCounts->isNotEmpty()) {
-                    $topSz = $sizeCounts->sortDesc()->keys()->first();
-                    $topCnt = $sizeCounts->sortDesc()->first();
+                if (!empty($st['size_counts'])) {
+                    $counts = $st['size_counts'];
+                    arsort($counts);
+                    $topSz = key($counts);
+                    $topCnt = current($counts);
                     $dominantSize = "Size {$topSz} ({$topCnt})";
                 }
 
@@ -385,7 +486,7 @@ class ShoeExportService
             $colSums = array_fill_keys($sizes, 0);
 
             foreach ($schools as $sch) {
-                $schRecs = $recipientsBySchool->get($sch->id, collect());
+                $schSizes = $statsBySchool[$sch->id]['sizes'] ?? [];
                 $rowItem = [
                     $noM++,
                     $this->sanitizeCellValue($sch->nama_sekolah),
@@ -394,7 +495,7 @@ class ShoeExportService
 
                 $schTotal = 0;
                 foreach ($sizes as $s) {
-                    $cnt = $schRecs->where('ukuran_sepatu', $s)->count();
+                    $cnt = $schSizes[$s]['total'] ?? 0;
                     $rowItem[] = $cnt;
                     $colSums[$s] += $cnt;
                     $schTotal += $cnt;
@@ -453,17 +554,19 @@ class ShoeExportService
         // ====================================================
         // DEDICATED SHEETS FOR EACH SCHOOL (INDIVIDUAL DATA)
         // ====================================================
-        // Generate separate sheets for up to 30 schools so each school has its own complete table & signatures
-        if ($schools->count() <= 30) {
+        // Generate separate sheets for up to 30 schools if total records are within safe memory limits
+        $allowSchoolSheets = ($schoolId !== null) || ($schools->count() <= 30 && count($allRecipients) <= 4000);
+        if ($allowSchoolSheets) {
             foreach ($schools as $sch) {
-                $schRecs = $recipientsBySchool->get($sch->id, collect());
-                if ($schRecs->isEmpty() && $schools->count() > 1) {
+                $schRecs = $recipientsBySchool[$sch->id] ?? [];
+                if (empty($schRecs) && $schools->count() > 1) {
                     continue;
                 }
 
                 $sheetTitle = $this->sanitizeSheetTitle($sch->nama_sekolah, $usedSheetTitles);
                 $schSheet = $spreadsheet->createSheet();
                 $schSheet->setTitle($sheetTitle);
+                $schSheet->setShowGridlines(true);
 
                 // Title
                 $schSheet->mergeCells('A1:G1');
@@ -484,15 +587,15 @@ class ShoeExportService
                 $schSheet->setCellValue('A6', 'Petugas Ukur / PIC:');
                 $schSheet->setCellValue('B6', $this->sanitizeCellValue($sch->pic_nama ?? '-'));
 
-                $sTotalSiswa = $schRecs->where('kategori', 'siswa')->count();
-                $sTotalStaff = $schRecs->whereIn('kategori', ['guru', 'tendik'])->count();
+                $sTotalSiswa = ($statsBySchool[$sch->id]['siswa_l'] ?? 0) + ($statsBySchool[$sch->id]['siswa_p'] ?? 0);
+                $sTotalStaff = ($statsBySchool[$sch->id]['staff_l'] ?? 0) + ($statsBySchool[$sch->id]['staff_p'] ?? 0);
 
                 $schSheet->setCellValue('E4', 'Total Siswa:');
                 $schSheet->setCellValue('F4', $sTotalSiswa . ' Orang');
                 $schSheet->setCellValue('E5', 'Total Guru & Tendik:');
                 $schSheet->setCellValue('F5', $sTotalStaff . ' Orang');
                 $schSheet->setCellValue('E6', 'Total Kebutuhan:');
-                $schSheet->setCellValue('F6', $schRecs->count() . ' Pasang');
+                $schSheet->setCellValue('F6', count($schRecs) . ' Pasang');
 
                 $schSheet->getStyle('A4:A6')->getFont()->setBold(true);
                 $schSheet->getStyle('E4:E6')->getFont()->setBold(true);
@@ -512,18 +615,19 @@ class ShoeExportService
                 $schSheet->getStyle('A9:G9')->applyFromArray($headerStyleBlue);
                 $schSheet->getRowDimension(9)->setRowHeight(22);
 
-                $schSizes = $schRecs->pluck('ukuran_sepatu')->unique()->sort()->values();
+                $schSizesData = $statsBySchool[$sch->id]['sizes'] ?? [];
+                ksort($schSizesData);
                 $schSizeRows = [];
                 $noSS = 1;
                 $totSL = 0; $totSP = 0; $totTL = 0; $totTP = 0; $totSchPsg = 0;
 
-                foreach ($schSizes as $szVal) {
-                    $mSz = $schRecs->where('ukuran_sepatu', $szVal);
-                    $cSL = $mSz->where('kategori', 'siswa')->where('jenis_kelamin', 'L')->count();
-                    $cSP = $mSz->where('kategori', 'siswa')->where('jenis_kelamin', 'P')->count();
-                    $cTL = $mSz->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'L')->count();
-                    $cTP = $mSz->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'P')->count();
-                    $cTot = $mSz->count();
+                foreach ($schSizesData as $szVal => $szSt) {
+                    if ($szSt['total'] === 0) continue;
+                    $cSL = $szSt['siswa_l'];
+                    $cSP = $szSt['siswa_p'];
+                    $cTL = $szSt['staff_l'];
+                    $cTP = $szSt['staff_p'];
+                    $cTot = $szSt['total'];
 
                     $schSizeRows[] = [$noSS++, $szVal, $cSL, $cSP, $cTL, $cTP, $cTot];
                     $totSL += $cSL; $totSP += $cSP; $totTL += $cTL; $totTP += $cTP; $totSchPsg += $cTot;
@@ -555,13 +659,13 @@ class ShoeExportService
                 $schSheet->getStyle("A{$recHeaderRow}")->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('1E293B');
 
                 $rTblHead = $recHeaderRow + 1;
-                $schSheet->setCellValue("A{$rTblHead}", 'No');
-                $schSheet->setCellValue("B{$rTblHead}", 'Nama Lengkap');
-                $schSheet->setCellValue("C{$rTblHead}", 'Jenis Kelamin');
-                $schSheet->setCellValue("D{$rTblHead}", 'Jabatan');
-                $schSheet->setCellValue("E{$rTblHead}", 'Kategori');
-                $schSheet->setCellValue("F{$rTblHead}", 'Panjang Kaki (cm)');
-                $schSheet->setCellValue("G{$rTblHead}", 'Ukuran Sepatu');
+                $schSheet->setCellValue('A' . $rTblHead, 'No');
+                $schSheet->setCellValue('B' . $rTblHead, 'Nama Lengkap');
+                $schSheet->setCellValue('C' . $rTblHead, 'Jenis Kelamin');
+                $schSheet->setCellValue('D' . $rTblHead, 'Jabatan');
+                $schSheet->setCellValue('E' . $rTblHead, 'Kategori');
+                $schSheet->setCellValue('F' . $rTblHead, 'Panjang Kaki (cm)');
+                $schSheet->setCellValue('G' . $rTblHead, 'Ukuran Sepatu');
                 $schSheet->getStyle("A{$rTblHead}:G{$rTblHead}")->applyFromArray($headerStyleEmerald);
                 $schSheet->getRowDimension($rTblHead)->setRowHeight(24);
 
@@ -580,15 +684,18 @@ class ShoeExportService
                 }
 
                 $rDataStart = $rTblHead + 1;
-                $schSheet->fromArray($recDataRows, null, "A{$rDataStart}");
                 $rDataEnd = $rDataStart + count($recDataRows) - 1;
-                $schSheet->getStyle("A{$rDataStart}:A{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $schSheet->getStyle("C{$rDataStart}:C{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $schSheet->getStyle("E{$rDataStart}:G{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $schSheet->getStyle("A{$rDataStart}:G{$rDataEnd}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+
+                if (!empty($recDataRows)) {
+                    $schSheet->fromArray($recDataRows, null, "A{$rDataStart}");
+                    $schSheet->getStyle("A{$rDataStart}:A{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $schSheet->getStyle("C{$rDataStart}:C{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $schSheet->getStyle("E{$rDataStart}:G{$rDataEnd}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                    $schSheet->getStyle("A{$rDataStart}:G{$rDataEnd}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+                }
 
                 // Signatures Section (Mengetahui / Mengesahkan)
-                $sigRow = $rDataEnd + 3;
+                $sigRow = max($rDataEnd, $rTblHead) + 3;
                 $kotaDate = ($sch->kota ?? 'Indonesia') . ', ' . date('d F Y');
                 $schSheet->setCellValue("E{$sigRow}", $kotaDate);
                 $schSheet->setCellValue("B" . ($sigRow + 1), 'Mengetahui,');
@@ -620,6 +727,7 @@ class ShoeExportService
         // ====================================================
         $sheetMaster = $spreadsheet->createSheet();
         $sheetMaster->setTitle('Daftar Penerima');
+        $sheetMaster->setShowGridlines(true);
 
         $sheetMaster->setCellValue('A1', 'No');
         $sheetMaster->setCellValue('B1', 'Sekolah');
@@ -636,9 +744,10 @@ class ShoeExportService
         $recRows = [];
         $noRec = 1;
         foreach ($allRecipients as $r) {
+            $schName = $schoolsMap[$r->school_id]->nama_sekolah ?? '-';
             $recRows[] = [
                 $noRec++,
-                $this->sanitizeCellValue($r->school?->nama_sekolah ?? '-'),
+                $this->sanitizeCellValue($schName),
                 $this->sanitizeCellValue($r->nama_lengkap),
                 $r->jenis_kelamin,
                 $this->sanitizeCellValue($r->jabatan ?? '-'),
@@ -654,7 +763,13 @@ class ShoeExportService
             $sheetMaster->getStyle("A2:A{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheetMaster->getStyle("D2:D{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheetMaster->getStyle("F2:H{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetMaster->getStyle("A2:H{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+
+            // Memory-safe styling: apply cell borders if under 2500 rows, otherwise apply clean outline border
+            if (count($recRows) <= 2500) {
+                $sheetMaster->getStyle("A2:H{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+            } else {
+                $sheetMaster->getStyle("A2:H{$endR2}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            }
         }
 
         // Explicit Column Widths for Sheet Master
@@ -726,4 +841,3 @@ class ShoeExportService
         return $letter;
     }
 }
-

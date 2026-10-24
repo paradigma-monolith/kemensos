@@ -482,6 +482,46 @@ class ShoeRecapTest extends TestCase
                 ->where('filters.tab', 'recipients')
         );
     }
+
+    public function test_large_dataset_excel_export_succeeds_without_memory_exhaustion(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create([
+            'nama_sekolah' => 'SR Skala Besar',
+            'kota' => 'Jakarta',
+            'pic_nama' => 'MIFTAH',
+        ]);
+
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school->id,
+            'file_name' => 'large_scale.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        // Insert 500 recipients in batch
+        $records = [];
+        for ($i = 1; $i <= 500; $i++) {
+            $records[] = [
+                'school_id' => $school->id,
+                'batch_id' => $batch->id,
+                'nomor_urut' => $i,
+                'nama_lengkap' => "Penerima Skala {$i}",
+                'jenis_kelamin' => ($i % 2 === 0) ? 'L' : 'P',
+                'jabatan' => 'Siswa',
+                'kategori' => 'siswa',
+                'ukuran_sepatu' => 30 + ($i % 14),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        ShoeRecipient::insert($records);
+
+        $response = $this->actingAs($user)->get('/shoes/export/excel');
+        $response->assertStatus(200);
+        $this->assertStringContainsString('Rekap_Sepatu_', (string) $response->headers->get('content-disposition'));
+        $this->assertEquals('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('content-type'));
+    }
 }
+
 
 
