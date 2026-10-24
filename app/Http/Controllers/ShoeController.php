@@ -310,6 +310,37 @@ class ShoeController extends Controller
     }
 
     /**
+     * Download the original imported Excel file.
+     */
+    public function downloadBatch(ShoeImportBatch $batch)
+    {
+        $filePath = $batch->file_path;
+
+        if ($filePath && file_exists($filePath)) {
+            return response()->download($filePath, $batch->file_name);
+        }
+
+        if ($filePath && Storage::disk('local')->exists($filePath)) {
+            return Storage::disk('local')->download($filePath, $batch->file_name);
+        }
+
+        // Check fallback paths
+        $fallbacks = [
+            storage_path('app/' . $filePath),
+            storage_path('app/private/' . $filePath),
+            storage_path('app/excel_imports/' . basename($filePath)),
+        ];
+
+        foreach ($fallbacks as $fb) {
+            if (file_exists($fb)) {
+                return response()->download($fb, $batch->file_name);
+            }
+        }
+
+        return redirect()->back()->with('error', 'Berkas Excel asli tidak ditemukan di storage server.');
+    }
+
+    /**
      * Delete an import batch and its records.
      */
     public function destroyBatch(ShoeImportBatch $batch)

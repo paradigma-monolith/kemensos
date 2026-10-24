@@ -843,13 +843,22 @@ const excelExportUrl = computed(() => {
                     {{ new Date(b.created_at).toLocaleString('id-ID') }}
                   </td>
                   <td class="py-3 px-4 text-center">
-                    <button
-                      @click="deleteBatch(b.id, b.school?.nama_sekolah)"
-                      class="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
-                      title="Hapus Batch Ini"
-                    >
-                      <Trash2 class="w-4 h-4" />
-                    </button>
+                    <div class="flex items-center justify-center gap-1.5">
+                      <a
+                        :href="getUrl(`/shoes/batches/${b.id}/download`)"
+                        class="p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
+                        title="Unduh Berkas Excel Asli"
+                      >
+                        <Download class="w-4 h-4" />
+                      </a>
+                      <button
+                        @click="deleteBatch(b.id, b.school?.nama_sekolah)"
+                        class="text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                        title="Hapus Batch Ini"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>

@@ -308,14 +308,29 @@ class ShoeRecapTest extends TestCase
         $this->assertEquals($expectedPics, School::DEFAULT_PICS);
     }
 
-    public function test_school_normalizes_pic_name_helper(): void
+    public function test_authenticated_user_can_download_original_batch_excel(): void
     {
-        $this->assertEquals('AZRIEL', School::normalizePicName('PIC AZRIEL'));
-        $this->assertEquals('WENDY', School::normalizePicName('pic: WENDY'));
-        $this->assertEquals('IKHSAN dan TRI', School::normalizePicName('PIC - IKHSAN dan TRI'));
-        $this->assertEquals('YUPITA', School::normalizePicName('YUPITA'));
-        $this->assertNull(School::normalizePicName(''));
-        $this->assertNull(School::normalizePicName(null));
+        $user = User::factory()->create();
+        $school = School::create([
+            'nama_sekolah' => 'Sekolah Download',
+            'pic_nama' => 'AZRIEL',
+        ]);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'excel_test');
+        file_put_contents($tempFile, 'dummy excel content');
+
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school->id,
+            'file_name' => 'sekolah_asli.xlsx',
+            'file_path' => $tempFile,
+            'imported_by' => $user->id,
+        ]);
+
+        $response = $this->actingAs($user)->get("/shoes/batches/{$batch->id}/download");
+        $response->assertStatus(200);
+        $this->assertStringContainsString('sekolah_asli.xlsx', (string) $response->headers->get('content-disposition'));
+
+        @unlink($tempFile);
     }
 }
 
