@@ -112,6 +112,75 @@ class ShoeRecapTest extends TestCase
         $this->assertEquals('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('content-type'));
     }
 
+    public function test_excel_export_contains_per_school_tables_and_sheets(): void
+    {
+        $school1 = School::create([
+            'nama_sekolah' => 'SR Cimahi',
+            'kota' => 'Cimahi',
+            'kepala_sekolah_nama' => 'Dr. Ikhsan',
+            'pic_nama' => 'Heni',
+        ]);
+        $school2 = School::create([
+            'nama_sekolah' => 'SR Rembang',
+            'kota' => 'Rembang',
+            'kepala_sekolah_nama' => 'Bambang, M.Pd.',
+            'pic_nama' => 'Siti',
+        ]);
+
+        $user = User::factory()->create();
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school1->id,
+            'file_name' => 'test.xlsx',
+            'file_path' => 'excel_imports/test.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        ShoeRecipient::create([
+            'school_id' => $school1->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Budi Santoso',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 40,
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $school2->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Ani Wijaya',
+            'jenis_kelamin' => 'P',
+            'jabatan' => 'Guru',
+            'kategori' => 'guru',
+            'ukuran_sepatu' => 38,
+        ]);
+
+        $exportService = app(\App\Services\ShoeExportService::class);
+        $spreadsheet = $exportService->generateRecapExcel();
+
+        $sheetNames = $spreadsheet->getSheetNames();
+        $this->assertContains('Rekap Ukuran Sepatu', $sheetNames);
+        $this->assertContains('Rekap Per Sekolah', $sheetNames);
+        $this->assertContains('SR Cimahi', $sheetNames);
+        $this->assertContains('SR Rembang', $sheetNames);
+        $this->assertContains('Daftar Penerima', $sheetNames);
+
+        // Check Rekap Per Sekolah content
+        $rekapPerSchoolSheet = $spreadsheet->getSheetByName('Rekap Per Sekolah');
+        $this->assertNotNull($rekapPerSchoolSheet);
+        $this->assertEquals('REKAPITULASI KEBUTUHAN PENGADAAN SEPATU PER SEKOLAH', $rekapPerSchoolSheet->getCell('A1')->getValue());
+        $this->assertEquals('SR Cimahi', $rekapPerSchoolSheet->getCell('B5')->getValue());
+        $this->assertEquals('SR Rembang', $rekapPerSchoolSheet->getCell('B6')->getValue());
+
+        // Check School 1 sheet content
+        $cimahiSheet = $spreadsheet->getSheetByName('SR Cimahi');
+        $this->assertNotNull($cimahiSheet);
+        $this->assertEquals('DATA REKAPITULASI & PENERIMA SEPATU', $cimahiSheet->getCell('A1')->getValue());
+        $this->assertEquals('Nama Lengkap', $cimahiSheet->getCell('B15')->getValue()); // table header
+        $this->assertEquals('Budi Santoso', $cimahiSheet->getCell('B16')->getValue()); // recipient row data
+    }
+
     public function test_authenticated_user_can_export_pdf(): void
     {
         $user = User::factory()->create();
