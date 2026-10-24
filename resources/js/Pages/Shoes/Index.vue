@@ -46,8 +46,8 @@ const props = defineProps({
     default: () => [],
   },
   batches: {
-    type: Array,
-    default: () => [],
+    type: [Object, Array],
+    default: () => ({}),
   },
   picList: {
     type: Array,
@@ -81,6 +81,11 @@ const props = defineProps({
 
 const page = usePage();
 
+const batchList = computed(() => {
+  if (Array.isArray(props.batches)) return props.batches;
+  return props.batches?.data || [];
+});
+
 // Intelligent active tab detection (matrix | recipients | batches)
 const getInitialTab = () => {
   if (typeof window !== 'undefined') {
@@ -88,6 +93,9 @@ const getInitialTab = () => {
     const urlTab = params.get('tab');
     if (urlTab && ['matrix', 'recipients', 'batches'].includes(urlTab)) {
       return urlTab;
+    }
+    if (params.has('batch_page')) {
+      return 'batches';
     }
     if (params.has('page') || params.get('anomaly') || params.get('search')) {
       return 'recipients';
@@ -134,6 +142,25 @@ const goToPage = (targetUrl) => {
     if (onlyAnomaly.value) {
       urlObj.searchParams.set('anomaly', '1');
     }
+    router.get(urlObj.pathname + urlObj.search, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  } catch (e) {
+    router.get(targetUrl, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  }
+};
+
+const goToBatchPage = (targetUrl) => {
+  if (!targetUrl) return;
+  try {
+    const urlObj = new URL(targetUrl, window.location.origin);
+    urlObj.searchParams.set('tab', 'batches');
     router.get(urlObj.pathname + urlObj.search, {}, {
       preserveState: true,
       preserveScroll: true,
@@ -729,9 +756,9 @@ const excelExportUrl = computed(() => {
             :class="activeTab === 'batches' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
           >
             <Layers class="w-4 h-4" />
-            Riwayat Import & Sekolah
+            Riwayat Berkas File
             <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
-              {{ schools.length }} Sekolah
+              {{ batches?.total ?? batchList.length }} Berkas
             </span>
           </button>
         </div>
@@ -989,9 +1016,8 @@ const excelExportUrl = computed(() => {
         </div>
       </div>
 
-      <!-- TAB 3: DAFTAR SEKOLAH & BATCH IMPORT -->
-      <div v-if="activeTab === 'batches'" class="space-y-8">
-        <!-- Import Batches History (Paling Atas) -->
+      <!-- TAB 3: RIWAYAT BERKAS FILE IMPORT -->
+      <div v-if="activeTab === 'batches'" class="space-y-6">
         <div>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
             <div>
@@ -1024,7 +1050,7 @@ const excelExportUrl = computed(() => {
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                <tr v-for="b in batches" :key="b.id">
+                <tr v-for="b in batchList" :key="b.id">
                   <td class="py-3 px-4 max-w-[200px]" :title="b.file_name">
                     <div class="flex items-center gap-1.5 min-w-0">
                       <FileSpreadsheet class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -1072,7 +1098,7 @@ const excelExportUrl = computed(() => {
                     </div>
                   </td>
                 </tr>
-                <tr v-if="batches.length === 0">
+                <tr v-if="batchList.length === 0">
                   <td colspan="7" class="py-8 text-center text-slate-500">
                     Belum ada berkas Excel yang di-import.
                   </td>
@@ -1080,70 +1106,27 @@ const excelExportUrl = computed(() => {
               </tbody>
             </table>
           </div>
-        </div>
 
-        <!-- Daftar Sekolah Terdaftar -->
-        <div>
-          <div class="mb-3">
-            <h2 class="text-base font-bold text-slate-900 dark:text-white">
-              Daftar Sekolah Terdaftar
-            </h2>
-            <p class="text-xs text-slate-500">Ringkasan per sekolah, status PIC ukur, dan data kepala sekolah.</p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div
-              v-for="sc in schools"
-              :key="sc.id"
-              class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
-            >
-              <div class="flex items-start justify-between">
-                <div>
-                  <h3 class="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <SchoolIcon class="w-4 h-4 text-indigo-500" />
-                    {{ sc.nama_sekolah }}
-                  </h3>
-                  <p v-if="sc.kota" class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                    <MapPin class="w-3.5 h-3.5" /> {{ sc.kota }}
-                  </p>
-                </div>
-                <span class="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                  {{ sc.recipients_count }} Pasang
-                </span>
-              </div>
-
-              <div class="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div>
-                  <span class="text-slate-400">PIC Ukur:</span> {{ sc.pic_nama || '-' }}
-                </div>
-                <div>
-                  <span class="text-slate-400">Kepsek:</span> {{ sc.kepala_sekolah_nama || '-' }}
-                </div>
-                <div>
-                  <span class="text-slate-400">NIP:</span> {{ sc.kepala_sekolah_nip || '-' }}
-                </div>
-                <div>
-                  <span class="text-slate-400">Tgl Konfirmasi:</span> {{ sc.tanggal_konfirmasi || '-' }}
-                </div>
-              </div>
-
-              <div class="pt-2 flex items-center justify-between text-xs border-t border-slate-100 dark:border-slate-800">
-                <span class="text-slate-400">{{ sc.import_batches_count }}x Berkas Import</span>
-                <div class="flex items-center gap-3">
-                  <button
-                    @click="openEditSchoolModal(sc)"
-                    class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer"
-                    title="Ubah Nama PIC atau Data Sekolah"
-                  >
-                    <Edit2 class="w-3.5 h-3.5" /> Ubah PIC
-                  </button>
-                  <button
-                    @click="deleteSchool(sc.id, sc.nama_sekolah)"
-                    class="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 class="w-3.5 h-3.5" /> Hapus
-                  </button>
-                </div>
-              </div>
+          <!-- Pagination Riwayat Berkas (10 per halaman) -->
+          <div
+            v-if="batches?.total && batches.total > batches.per_page"
+            class="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 pt-3 text-xs"
+          >
+            <div class="text-slate-500">
+              Menampilkan <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.from }}</span> - <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.to }}</span> dari <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.total }}</span> berkas import
+            </div>
+            <div class="flex items-center gap-1 flex-wrap justify-center">
+              <template v-for="(link, lIdx) in batches.links" :key="lIdx">
+                <button
+                  v-if="link.url"
+                  type="button"
+                  @click="goToBatchPage(link.url)"
+                  class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer"
+                  :class="link.active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
+                  v-html="link.label"
+                ></button>
+                <span v-else class="px-2 py-1.5 text-slate-400" v-html="link.label"></span>
+              </template>
             </div>
           </div>
         </div>

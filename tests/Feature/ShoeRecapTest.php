@@ -489,6 +489,32 @@ class ShoeRecapTest extends TestCase
         );
     }
 
+    public function test_import_batches_paginated_10_per_page_and_preserves_tab(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create(['nama_sekolah' => 'Sekolah Batches']);
+
+        // Create 15 batches
+        for ($i = 1; $i <= 15; $i++) {
+            ShoeImportBatch::create([
+                'school_id' => $school->id,
+                'file_name' => "file_{$i}.xlsx",
+                'imported_by' => $user->id,
+            ]);
+        }
+
+        $response = $this->actingAs($user)->get('/shoes?batch_page=2');
+        $response->assertStatus(200);
+        $response->assertInertia(fn ($page) => 
+            $page->component('Shoes/Index')
+                ->where('filters.tab', 'batches')
+                ->has('batches.data', 5)
+                ->where('batches.total', 15)
+                ->where('batches.per_page', 10)
+                ->where('batches.current_page', 2)
+        );
+    }
+
     public function test_large_dataset_excel_export_succeeds_without_memory_exhaustion(): void
     {
         $user = User::factory()->create();

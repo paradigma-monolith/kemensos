@@ -129,12 +129,18 @@ class ShoeController extends Controller
         // 5. Import Batches
         $batches = ShoeImportBatch::with(['school:id,nama_sekolah,pic_nama', 'user:id,name'])
             ->latest()
-            ->take(20)
-            ->get();
+            ->paginate(10, ['*'], 'batch_page')
+            ->withQueryString();
 
         $tab = $request->input('tab');
         if (!$tab) {
-            $tab = ($request->has('page') || $onlyAnomaly || $search) ? 'recipients' : 'matrix';
+            if ($request->has('batch_page')) {
+                $tab = 'batches';
+            } elseif ($request->has('page') || $onlyAnomaly || $search) {
+                $tab = 'recipients';
+            } else {
+                $tab = 'matrix';
+            }
         }
 
         return Inertia::render('Shoes/Index', [
