@@ -24,7 +24,8 @@ import {
   FileUp,
   RefreshCw,
   Info,
-  Edit2
+  Edit2,
+  AlertTriangle
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -87,6 +88,7 @@ const selectedSchool = ref(props.filters.school_id || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
 const selectedPic = ref(props.filters.pic || '');
+const onlyAnomaly = ref(Boolean(props.filters.anomaly));
 
 // Upload Modal state (Multi-File & PIC Support)
 const isUploadModalOpen = ref(false);
@@ -110,6 +112,48 @@ const editSchoolForm = useForm({
   kepala_sekolah_nip: '',
 });
 
+// Edit Recipient Modal state (for fixing shoe size / foot length anomalies)
+const isEditRecipientModalOpen = ref(false);
+const editingRecipient = ref(null);
+const editRecipientForm = useForm({
+  nama_lengkap: '',
+  jenis_kelamin: 'L',
+  jabatan: '',
+  kategori: 'siswa',
+  panjang_kaki: '',
+  ukuran_sepatu: '',
+  catatan: '',
+});
+
+const openEditRecipientModal = (rec) => {
+  editingRecipient.value = rec;
+  editRecipientForm.nama_lengkap = rec.nama_lengkap || '';
+  editRecipientForm.jenis_kelamin = rec.jenis_kelamin || 'L';
+  editRecipientForm.jabatan = rec.jabatan || '';
+  editRecipientForm.kategori = rec.kategori || 'siswa';
+  editRecipientForm.panjang_kaki = rec.panjang_kaki ?? '';
+  editRecipientForm.ukuran_sepatu = rec.ukuran_sepatu ?? '';
+  editRecipientForm.catatan = rec.catatan || '';
+  isEditRecipientModalOpen.value = true;
+};
+
+const swapLengthAndSize = () => {
+  const temp = editRecipientForm.panjang_kaki;
+  editRecipientForm.panjang_kaki = editRecipientForm.ukuran_sepatu;
+  editRecipientForm.ukuran_sepatu = temp ? Math.round(Number(temp)) : '';
+};
+
+const submitEditRecipient = () => {
+  if (!editingRecipient.value) return;
+  editRecipientForm.patch(getUrl(`/shoes/recipients/${editingRecipient.value.id}`), {
+    preserveScroll: true,
+    onSuccess: () => {
+      isEditRecipientModalOpen.value = false;
+      editingRecipient.value = null;
+    },
+  });
+};
+
 const getUrl = (path) => {
   if (typeof window !== 'undefined') {
     const match = window.location.pathname.match(/^(\/[^\/]+\/public)/);
@@ -128,11 +172,18 @@ const applyFilters = () => {
     gender: selectedGender.value || undefined,
     pic: selectedPic.value || undefined,
     search: search.value || undefined,
+    anomaly: onlyAnomaly.value ? 1 : undefined,
   }, {
     preserveState: true,
     preserveScroll: true,
     replace: true,
   });
+};
+
+const toggleAnomalyFilter = () => {
+  onlyAnomaly.value = !onlyAnomaly.value;
+  activeTab.value = 'recipients';
+  applyFilters();
 };
 
 const resetFilters = () => {
@@ -141,6 +192,7 @@ const resetFilters = () => {
   selectedKategori.value = '';
   selectedGender.value = '';
   selectedPic.value = '';
+  onlyAnomaly.value = false;
   applyFilters();
 };
 
@@ -530,42 +582,103 @@ const excelExportUrl = computed(() => {
         </div>
       </div>
 
+      <!-- Anomaly Alert Banner (Jika terdeteksi data anomali atau filter aktif) -->
+      <div
+        v-if="stats.total_anomalies > 0 || onlyAnomaly"
+        class="p-4 rounded-2xl border shadow-sm transition-all"
+        :class="onlyAnomaly ? 'bg-amber-100/90 dark:bg-amber-950/70 border-amber-300 dark:border-amber-700' : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60'"
+      >
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <div class="p-2.5 rounded-xl bg-amber-200/80 dark:bg-amber-900/80 text-amber-800 dark:text-amber-200 shrink-0">
+              <AlertTriangle class="w-5 h-5 text-amber-700 dark:text-amber-300" />
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="text-sm font-bold text-amber-950 dark:text-amber-100">
+                  Terdeteksi {{ stats.total_anomalies }} Data Anomali
+                </h4>
+                <span
+                  v-if="stats.extreme_anomalies > 0"
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-800"
+                >
+                  ⚠️ {{ stats.extreme_anomalies }} Ukuran Ekstrem (&gt; 100)
+                </span>
+                <span
+                  v-if="onlyAnomaly"
+                  class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-600 text-white"
+                >
+                  Mode Filter Anomali Aktif
+                </span>
+              </div>
+              <p class="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                Ditemukan ukuran sepatu di luar standar (&gt; 50 atau &gt; 100) atau panjang kaki tidak wajar. Anda dapat memfilter dan langsung memperbaikinya lewat tombol koreksi di tabel.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              @click="toggleAnomalyFilter"
+              class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+              :class="onlyAnomaly ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100/60 dark:hover:bg-slate-800'"
+            >
+              <Filter class="w-3.5 h-3.5" />
+              {{ onlyAnomaly ? 'Tampilkan Seluruh Data' : 'Tampilkan Hanya Data Anomali' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Navigation Tabs -->
-      <div class="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
-        <button
-          @click="activeTab = 'matrix'"
-          class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
-          :class="activeTab === 'matrix' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        >
-          <BarChart3 class="w-4 h-4" />
-          Rekap Ukuran Sepatu (Vendor Matrix)
-          <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
-            {{ sizeMatrix.length }} Ukuran
-          </span>
-        </button>
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800">
+        <div class="flex items-center gap-2">
+          <button
+            @click="activeTab = 'matrix'"
+            class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
+            :class="activeTab === 'matrix' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+          >
+            <BarChart3 class="w-4 h-4" />
+            Rekap Ukuran Sepatu (Vendor Matrix)
+            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
+              {{ sizeMatrix.length }} Ukuran
+            </span>
+          </button>
 
-        <button
-          @click="activeTab = 'recipients'"
-          class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
-          :class="activeTab === 'recipients' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        >
-          <Users class="w-4 h-4" />
-          Daftar Rincian Penerima
-          <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
-            {{ recipients.total }} Orang
-          </span>
-        </button>
+          <button
+            @click="activeTab = 'recipients'"
+            class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
+            :class="activeTab === 'recipients' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+          >
+            <Users class="w-4 h-4" />
+            Daftar Rincian Penerima
+            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+              {{ recipients.total }} Orang
+            </span>
+          </button>
 
+          <button
+            @click="activeTab = 'batches'"
+            class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
+            :class="activeTab === 'batches' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+          >
+            <Layers class="w-4 h-4" />
+            Riwayat Import & Sekolah
+            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+              {{ schools.length }} Sekolah
+            </span>
+          </button>
+        </div>
+
+        <!-- Anomaly Quick Toggle Tab Button -->
         <button
-          @click="activeTab = 'batches'"
-          class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
-          :class="activeTab === 'batches' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+          @click="toggleAnomalyFilter"
+          class="flex items-center gap-1.5 px-3 py-1.5 mb-1 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+          :class="onlyAnomaly ? 'bg-amber-600 text-white shadow-sm' : (stats.total_anomalies > 0 ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100' : 'bg-slate-50 dark:bg-slate-800/80 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300')"
+          title="Filter cepat data anomali seperti ukuran sepatu > 100"
         >
-          <Layers class="w-4 h-4" />
-          Riwayat Import & Sekolah
-          <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
-            {{ schools.length }} Sekolah
-          </span>
+          <AlertTriangle class="w-3.5 h-3.5" :class="stats.total_anomalies > 0 ? 'text-amber-500 animate-pulse' : 'text-slate-400'" />
+          <span>Anomali:</span>
+          <span class="font-mono font-bold">{{ stats.total_anomalies || 0 }}</span>
         </button>
       </div>
 
@@ -689,13 +802,15 @@ const excelExportUrl = computed(() => {
                 <th class="py-3.5 px-4">Jabatan / Kategori</th>
                 <th class="py-3.5 px-4 text-center">Panjang Kaki</th>
                 <th class="py-3.5 px-4 text-center">Ukuran Sepatu</th>
+                <th class="py-3.5 px-4 text-center w-24">Aksi</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
               <tr
                 v-for="(rec, idx) in recipients.data"
                 :key="rec.id"
-                class="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                class="transition-colors"
+                :class="rec.is_anomaly ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/60 dark:hover:bg-amber-900/40' : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'"
               >
                 <td class="py-3 px-4 text-center font-mono text-slate-400">
                   {{ (recipients.current_page - 1) * recipients.per_page + idx + 1 }}
@@ -733,15 +848,53 @@ const excelExportUrl = computed(() => {
                   {{ rec.panjang_kaki ? `${rec.panjang_kaki} cm` : '-' }}
                 </td>
                 <td class="py-3 px-4 text-center">
-                  <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-lg font-bold font-mono text-xs bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50">
+                  <span
+                    class="inline-flex items-center justify-center px-2.5 py-1 rounded-lg font-bold font-mono text-xs border"
+                    :class="rec.is_anomaly
+                      ? (rec.ukuran_sepatu > 100 
+                          ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700 animate-pulse'
+                          : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700')
+                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/50'"
+                  >
                     Size {{ rec.ukuran_sepatu }}
                   </span>
+                  <div v-if="rec.is_anomaly" class="mt-1 flex items-center justify-center">
+                    <span
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-xs cursor-help"
+                      :class="rec.ukuran_sepatu > 100 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'"
+                      :title="rec.anomaly_reason"
+                    >
+                      <AlertTriangle class="w-2.5 h-2.5" />
+                      {{ rec.ukuran_sepatu > 100 ? 'Ekstrem > 100' : 'Anomali' }}
+                    </span>
+                  </div>
+                </td>
+                <td class="py-3 px-4 text-center">
+                  <button
+                    @click="openEditRecipientModal(rec)"
+                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                    :class="rec.is_anomaly 
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm ring-2 ring-amber-400/50' 
+                      : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800'"
+                    :title="rec.is_anomaly ? `Perbaiki Anomali: ${rec.anomaly_reason}` : 'Koreksi Data Penerima'"
+                  >
+                    <Edit2 class="w-3.5 h-3.5" />
+                    <span>{{ rec.is_anomaly ? 'Koreksi' : 'Edit' }}</span>
+                  </button>
                 </td>
               </tr>
 
               <tr v-if="recipients.data.length === 0">
-                <td colspan="7" class="py-8 text-center text-slate-500">
-                  Tidak ada data penerima yang cocok dengan kriteria pencarian.
+                <td colspan="8" class="py-8 text-center text-slate-500">
+                  <div class="flex flex-col items-center justify-center gap-1.5">
+                    <span v-if="onlyAnomaly" class="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 class="w-4 h-4" />
+                      Tidak ditemukan data anomali pada kriteria filter saat ini!
+                    </span>
+                    <span v-else>
+                      Tidak ada data penerima yang cocok dengan kriteria pencarian.
+                    </span>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -1195,6 +1348,190 @@ const excelExportUrl = computed(() => {
               class="px-4 py-2 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all cursor-pointer shadow-sm"
             >
               Simpan Perubahan
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: KOREKSI DATA PENERIMA & UKURAN SEPATU -->
+    <div
+      v-if="isEditRecipientModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+      @click.self="isEditRecipientModalOpen = false"
+    >
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <div class="p-2 rounded-xl" :class="editingRecipient?.is_anomaly ? 'bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400' : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400'">
+              <AlertTriangle v-if="editingRecipient?.is_anomaly" class="w-5 h-5 text-amber-500" />
+              <Edit2 v-else class="w-5 h-5 text-indigo-500" />
+            </div>
+            <div>
+              <h3 class="font-bold text-base text-slate-900 dark:text-white">
+                {{ editingRecipient?.is_anomaly ? 'Koreksi Data Anomali Penerima' : 'Ubah Data Penerima' }}
+              </h3>
+              <p class="text-xs text-slate-500">{{ editingRecipient?.school?.nama_sekolah || '-' }}</p>
+            </div>
+          </div>
+          <button
+            @click="isEditRecipientModalOpen = false"
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg cursor-pointer"
+          >
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Anomaly Reason Callout -->
+        <div
+          v-if="editingRecipient?.is_anomaly"
+          class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2"
+        >
+          <AlertTriangle class="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+          <div>
+            <span class="font-bold">Indikasi Anomali:</span>
+            <span class="ml-1">{{ editingRecipient.anomaly_reason }}</span>
+          </div>
+        </div>
+
+        <form @submit.prevent="submitEditRecipient" class="space-y-3.5 text-xs">
+          <!-- Nama Lengkap -->
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Nama Lengkap Penerima:
+            </label>
+            <input
+              v-model="editRecipientForm.nama_lengkap"
+              type="text"
+              required
+              placeholder="Nama lengkap..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <!-- Gender -->
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Jenis Kelamin:
+              </label>
+              <select
+                v-model="editRecipientForm.jenis_kelamin"
+                class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="L">Laki-laki (L)</option>
+                <option value="P">Perempuan (P)</option>
+              </select>
+            </div>
+
+            <!-- Kategori -->
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Kategori:
+              </label>
+              <select
+                v-model="editRecipientForm.kategori"
+                class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="siswa">Siswa</option>
+                <option value="guru">Guru</option>
+                <option value="tendik">Tendik</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Jabatan -->
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Jabatan / Kelas:
+            </label>
+            <input
+              v-model="editRecipientForm.jabatan"
+              type="text"
+              placeholder="Contoh: Siswa Kelas 7 / Guru Matematika..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <!-- Ukuran Sepatu & Panjang Kaki -->
+          <div class="p-3.5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-800 dark:text-slate-200">Koreksi Ukuran & Panjang Kaki</span>
+              <button
+                type="button"
+                @click="swapLengthAndSize"
+                class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline cursor-pointer"
+                title="Tukar isi Panjang Kaki dengan Ukuran Sepatu jika terbalik"
+              >
+                <ArrowUpDown class="w-3.5 h-3.5" />
+                Tukar Nilai (Swap)
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Ukuran Sepatu (Standar 25 - 50):
+                </label>
+                <input
+                  v-model.number="editRecipientForm.ukuran_sepatu"
+                  type="number"
+                  min="15"
+                  max="150"
+                  required
+                  placeholder="Contoh: 38"
+                  class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border font-bold font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  :class="editRecipientForm.ukuran_sepatu > 50 ? 'border-rose-400 text-rose-600' : 'border-slate-200 dark:border-slate-700'"
+                />
+                <span v-if="editRecipientForm.ukuran_sepatu > 100" class="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-1 block">
+                  ⚠️ Nilai &gt; 100 tergolong ekstrem.
+                </span>
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Panjang Kaki (cm):
+                </label>
+                <input
+                  v-model="editRecipientForm.panjang_kaki"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  placeholder="Contoh: 24.5"
+                  class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Catatan -->
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Catatan Khusus (Opsional):
+            </label>
+            <input
+              v-model="editRecipientForm.catatan"
+              type="text"
+              placeholder="Catatan..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              @click="isEditRecipientModalOpen = false"
+              class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="editRecipientForm.processing"
+              class="px-4 py-2 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all cursor-pointer shadow-sm"
+            >
+              Simpan Koreksi
             </button>
           </div>
         </form>

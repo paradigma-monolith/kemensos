@@ -83,6 +83,8 @@ class ShoeDashboardController extends Controller
         // Size Range
         $minSize = (clone $baseQuery)->min('ukuran_sepatu') ?: 36;
         $maxSize = (clone $baseQuery)->max('ukuran_sepatu') ?: 45;
+        $totalAnomalies = (clone $baseQuery)->anomaly()->count();
+        $extremeAnomalies = (clone $baseQuery)->where('ukuran_sepatu', '>', 100)->count();
 
         // Total Schools registered (matching active filters)
         $totalSekolahQuery = School::has('recipients');
@@ -276,6 +278,8 @@ class ShoeDashboardController extends Controller
                     'avg_foot_length' => $avgFootLength,
                     'min_size' => $minSize,
                     'max_size' => $maxSize,
+                    'total_anomalies' => $totalAnomalies,
+                    'extreme_anomalies' => $extremeAnomalies,
                 ],
                 'size_distribution' => $sizeDistribution,
                 'size_groups' => $sizeGroups,

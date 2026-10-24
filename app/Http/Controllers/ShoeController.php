@@ -32,6 +32,7 @@ class ShoeController extends Controller
         $gender = $request->query('gender');
         $pic = $request->query('pic');
         $search = $request->query('search');
+        $onlyAnomaly = $request->boolean('anomaly');
 
         // Master PIC list combining default constant and any existing database values
         $existingPics = School::whereNotNull('pic_nama')
@@ -60,6 +61,8 @@ class ShoeController extends Controller
         $totalTendik = (clone $statsQuery)->where('kategori', 'tendik')->count();
         $totalPria = (clone $statsQuery)->where('jenis_kelamin', 'L')->count();
         $totalWanita = (clone $statsQuery)->where('jenis_kelamin', 'P')->count();
+        $totalAnomalies = (clone $statsQuery)->anomaly()->count();
+        $extremeAnomalies = (clone $statsQuery)->where('ukuran_sepatu', '>', 100)->count();
 
         $totalSchools = School::count();
         $totalBatches = ShoeImportBatch::count();
@@ -95,6 +98,7 @@ class ShoeController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->when($kategori, fn($q) => $q->where('kategori', $kategori))
             ->when($gender, fn($q) => $q->where('jenis_kelamin', $gender))
+            ->when($onlyAnomaly, fn($q) => $q->anomaly())
             ->when($pic, function ($q, $pic) {
                 $norm = School::normalizePicName($pic);
                 $q->whereHas('school', fn($sq) => $sq->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm));
@@ -138,6 +142,16 @@ class ShoeController extends Controller
                 'total_tendik' => $totalTendik,
                 'total_pria' => $totalPria,
                 'total_wanita' => $totalWanita,
+                'total_anomalies' => $totalAnomalies,
+                'extreme_anomalies' => $extremeAnomalies,
+            ],
+            'filters' => [
+                'school_id' => $schoolId,
+                'kategori' => $kategori,
+                'gender' => $gender,
+                'pic' => $pic,
+                'search' => $search,
+                'anomaly' => $onlyAnomaly,
             ],
             'sizeMatrix' => $sizeMatrix,
             'recipients' => $recipientQuery,
@@ -449,5 +463,36 @@ class ShoeController extends Controller
         }
 
         return redirect()->route('shoes.index')->with('success', $msg);
+    }
+
+    /**
+     * Update recipient data (e.g. to fix anomalies in shoe size or foot length).
+     */
+    public function updateRecipient(Request $request, ShoeRecipient $recipient)
+    {
+        $validated = $request->validate([
+            'nama_lengkap' => 'required|string|max:255',
+            'jenis_kelamin' => 'required|in:L,P',
+            'jabatan' => 'nullable|string|max:255',
+            'kategori' => 'required|in:siswa,guru,tendik',
+            'panjang_kaki' => 'nullable|numeric|min:0|max:100',
+            'ukuran_sepatu' => 'required|integer|min:15|max:150',
+            'catatan' => 'nullable|string|max:500',
+        ]);
+
+        $recipient->update($validated);
+
+        // Recalculate batch statistics if batch exists
+        if ($recipient->batch) {
+            $batch = $recipient->batch;
+            $batch->update([
+                'total_sepatu' => $batch->recipients()->count(),
+                'total_siswa' => $batch->recipients()->where('kategori', 'siswa')->count(),
+                'total_guru' => $batch->recipients()->where('kategori', 'guru')->count(),
+                'total_tendik' => $batch->recipients()->where('kategori', 'tendik')->count(),
+            ]);
+        }
+
+        return redirect()->back()->with('success', "Data penerima {$recipient->nama_lengkap} (Ukuran: {$recipient->ukuran_sepatu}) berhasil diperbarui.");
     }
 }

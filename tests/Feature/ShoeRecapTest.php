@@ -332,5 +332,60 @@ class ShoeRecapTest extends TestCase
 
         @unlink($tempFile);
     }
+
+    public function test_anomaly_detection_identifies_extreme_shoe_size_greater_than_100(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create(['nama_sekolah' => 'Sekolah Anomali']);
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school->id,
+            'file_name' => 'anomali.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        $normal = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Normal User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 38,
+            'panjang_kaki' => 24.5,
+        ]);
+
+        $extreme = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Extreme Anomaly User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 250,
+            'panjang_kaki' => 38,
+        ]);
+
+        $this->assertFalse($normal->is_anomaly);
+        $this->assertTrue($extreme->is_anomaly);
+        $this->assertStringContainsString('> 100', $extreme->anomaly_reason);
+
+        // Test filtering by anomaly
+        $response = $this->actingAs($user)->get('/shoes?anomaly=1');
+        $response->assertStatus(200);
+
+        // Test updating to fix anomaly
+        $patchResponse = $this->actingAs($user)->patch("/shoes/recipients/{$extreme->id}", [
+            'nama_lengkap' => 'Extreme Anomaly User',
+            'jenis_kelamin' => 'L',
+            'kategori' => 'siswa',
+            'jabatan' => 'Siswa',
+            'panjang_kaki' => 25.0,
+            'ukuran_sepatu' => 38,
+        ]);
+        $patchResponse->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('shoe_recipients', [
+            'id' => $extreme->id,
+            'ukuran_sepatu' => 38,
+            'panjang_kaki' => 25.0,
+        ]);
+    }
 }
 

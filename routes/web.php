@@ -51,6 +51,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/sync-storage', [ShoeController::class, 'syncStorage'])->name('sync.storage');
         Route::patch('/schools/{school}', [ShoeController::class, 'updateSchool'])->name('school.update');
         Route::delete('/schools/{school}', [ShoeController::class, 'destroySchool'])->name('school.destroy');
+        Route::patch('/recipients/{recipient}', [ShoeController::class, 'updateRecipient'])->name('recipient.update');
     });
 
     // Profile & Account Management
