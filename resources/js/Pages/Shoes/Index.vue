@@ -1233,8 +1233,15 @@ const excelExportUrl = computed(() => {
           </ul>
         </div>
 
-        <div v-if="uploadForm.errors.excel_files || uploadForm.errors.excel_file" class="text-xs font-semibold text-rose-500">
-          {{ uploadForm.errors.excel_files || uploadForm.errors.excel_file }}
+        <!-- Validation / Upload Errors -->
+        <div v-if="Object.keys(uploadForm.errors).length > 0" class="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs text-rose-600 dark:text-rose-300 space-y-1">
+          <div class="font-bold flex items-center gap-1.5">
+            <AlertCircle class="w-4 h-4 text-rose-500 shrink-0" />
+            Kendala Upload Berkas:
+          </div>
+          <ul class="list-disc list-inside space-y-0.5 pl-1">
+            <li v-for="(err, key) in uploadForm.errors" :key="key">{{ err }}</li>
+          </ul>
         </div>
 
         <!-- Modal Actions -->

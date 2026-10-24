@@ -63,21 +63,36 @@ class ShoeExcelImportService
                 $school->update($updateData);
             }
 
-            // Prevent duplicate double-counting on re-import of the same school
-            $school->recipients()->delete();
-            $school->importBatches()->delete();
-
-            // 2. Create import batch
             $batchNotes = $finalPic ? "PIC: {$finalPic} | " : "";
             $batchNotes .= "Import otomatis pada " . now()->format('Y-m-d H:i:s');
 
-            $batch = ShoeImportBatch::create([
-                'school_id' => $school->id,
-                'file_name' => $originalName,
-                'file_path' => $filePath,
-                'imported_by' => $userId,
-                'notes' => $batchNotes,
-            ]);
+            // If a batch with the exact same file name was previously imported for this school, update that batch
+            $existingBatch = ShoeImportBatch::where('school_id', $school->id)
+                ->where(function ($q) use ($originalName) {
+                    $q->where('file_name', $originalName)
+                      ->orWhere('file_name', basename($originalName));
+                })
+                ->first();
+
+            if ($existingBatch) {
+                // Delete previous recipients from this specific batch only to avoid duplicates
+                $existingBatch->recipients()->delete();
+                $batch = $existingBatch;
+                $batch->update([
+                    'file_path' => $filePath,
+                    'imported_by' => $userId,
+                    'notes' => $batchNotes,
+                ]);
+            } else {
+                // Create a new batch for this school
+                $batch = ShoeImportBatch::create([
+                    'school_id' => $school->id,
+                    'file_name' => $originalName,
+                    'file_path' => $filePath,
+                    'imported_by' => $userId,
+                    'notes' => $batchNotes,
+                ]);
+            }
 
             $recipients = [];
             $counts = [
@@ -88,9 +103,13 @@ class ShoeExcelImportService
             ];
             $warnings = [];
 
-            // 3. Process each sheet dynamically (skip recap / summary sheets)
-            foreach ($spreadsheet->getSheetNames() as $sheetIndex => $sheetName) {
-                if (preg_match('/^(REKAP|REKAPITULASI|RINGKASAN|SUMMARY|GRAFIK)/i', trim($sheetName))) {
+            // 3. Process each sheet dynamically
+            $sheetNames = $spreadsheet->getSheetNames();
+            $hasMultipleSheets = count($sheetNames) > 1;
+
+            foreach ($sheetNames as $sheetIndex => $sheetName) {
+                // Only skip pure summary sheets if the workbook has multiple sheets
+                if ($hasMultipleSheets && preg_match('/^(REKAP|REKAPITULASI|RINGKASAN|SUMMARY|GRAFIK)$/i', trim($sheetName))) {
                     continue;
                 }
                 $sheet = $spreadsheet->getSheet($sheetIndex);
@@ -140,34 +159,69 @@ class ShoeExcelImportService
      */
     protected function extractSchoolName(Spreadsheet $spreadsheet, string $originalName): string
     {
-        // 1. Check cells A1, B1, C1, A2, B2 across all sheets
+        // 1. Prepare clean filename candidate
+        $cleanFile = pathinfo($originalName, PATHINFO_FILENAME);
+        $cleanFile = preg_replace('/^\d+_[a-f0-9]+_/i', '', $cleanFile);
+        $cleanFile = preg_replace('/^\d+_/i', '', $cleanFile);
+        $cleanFile = preg_replace('/^(KONFIRMASI(\s+SEPATU)?|DATA(\s+SEPATU)?|\d+\.|\d+_\s*)/i', '', $cleanFile);
+        $cleanFile = preg_replace('/\s*[\(\[]?(OK|FINAL|UPDATE)[\)\]]?/i', '', $cleanFile);
+        $cleanFile = str_replace(['_', '-'], ' ', $cleanFile);
+        $cleanFile = trim(preg_replace('/\s+/', ' ', $cleanFile));
+
+        // 2. Candidate from sheet cells
+        $candidateCell = null;
         foreach ($spreadsheet->getAllSheets() as $sheet) {
             foreach (['A1', 'B1', 'C1', 'A2', 'B2', 'A3', 'B3'] as $coord) {
                 $val = trim((string)$sheet->getCell($coord)->getValue());
-                if (!empty($val) && preg_match('/(SEKOLAH|SRMP|SMP|SD|SMA|SMK|MADRASAH|SR\s*\d|SMPN|SDN|SMAN)/i', $val)) {
-                    return $val;
+                if (empty($val)) continue;
+
+                $valClean = preg_replace('/^(NAMA\s+SEKOLAH|SEKOLAH|SATUAN\s+PENDIDIKAN|NAMA\s+LEMBAGA)\s*[:=-]\s*/i', '', $val);
+                $valClean = trim($valClean);
+
+                // Reject if contains dots placeholder like "SEKOLAH RAKYAT .............." or "...." or "___"
+                if (preg_match('/(\.{3,}|_{3,}|\[|\.\.\.)/', $valClean)) {
+                    continue;
+                }
+
+                // Reject generic document headers
+                if (preg_match('/^(REKAP|REKAPITULASI|FORMAT\s+KONFIRMASI|DATA\s+UKURAN|DAFTAR\s+UKURAN|FORM\s+KONFIRMASI|KONFIRMASI\s+UKURAN|TABEL\s+UKURAN|SURAT\s+KONFIRMASI)/i', $valClean)) {
+                    continue;
+                }
+
+                if (preg_match('/(SEKOLAH|SRMP|SMP|SD|SMA|SMK|MADRASAH|SR\s*\d|SMPN|SDN|SMAN)/i', $valClean)) {
+                    $candidateCell = $valClean;
+                    break 2;
                 }
             }
         }
 
-        // 2. Check any non-empty cell in row 1 of the first sheet
-        try {
-            $firstSheet = $spreadsheet->getSheet(0);
-            for ($col = 1; $col <= 5; $col++) {
-                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
-                $val = trim((string)$firstSheet->getCell("{$colLetter}1")->getValue());
-                if (!empty($val) && strlen($val) > 4 && !is_numeric($val)) {
-                    return $val;
+        // If cell has candidate, check if filename has a more specific school identifier
+        // (e.g. copied template where cell says "SRMP 8 CIMAHI" but file is "SRMP 9 CIMAHI" or "SRMP 9 BANDUNG")
+        if (!empty($candidateCell) && !empty($cleanFile)) {
+            preg_match('/\b(\d+)\b/', $cleanFile, $fileNums);
+            preg_match('/\b(\d+)\b/', $candidateCell, $cellNums);
+            if (!empty($fileNums[1]) && !empty($cellNums[1]) && $fileNums[1] !== $cellNums[1]) {
+                return strtoupper($cleanFile);
+            }
+
+            foreach (['BANDUNG', 'CIMAHI', 'BREBES', 'REMBANG', 'BOGOR', 'JAKARTA', 'SURABAYA', 'SEMARANG', 'SOLO', 'YOGYA'] as $city) {
+                if (str_contains(strtoupper($cleanFile), $city) && !str_contains(strtoupper($candidateCell), $city)) {
+                    return strtoupper($cleanFile);
                 }
             }
-        } catch (\Throwable $e) {}
 
-        // 3. Fallback: clean filename
-        $clean = pathinfo($originalName, PATHINFO_FILENAME);
-        $clean = preg_replace('/^(KONFIRMASI(\s+SEPATU)?|\(OK\)|OK)/i', '', $clean);
-        $clean = trim($clean, " _-()");
+            return $candidateCell;
+        }
 
-        return !empty($clean) ? $clean : pathinfo($originalName, PATHINFO_FILENAME);
+        if (!empty($candidateCell)) {
+            return $candidateCell;
+        }
+
+        if (!empty($cleanFile) && strlen($cleanFile) > 3) {
+            return strtoupper($cleanFile);
+        }
+
+        return pathinfo($originalName, PATHINFO_FILENAME);
     }
 
     /**
@@ -265,18 +319,18 @@ class ShoeExcelImportService
                 $val = strtolower(trim((string)$sheet->getCell("{$colLetter}{$r}")->getValue()));
                 if (empty($val)) continue;
 
-                if ($val === 'no' || $val === 'no.' || str_contains($val, 'nomor urut') || $val === 'nomor') {
+                if (preg_match('/(ukuran|size|sepatu|\bsz\b|\buk\b)/i', $val)) {
+                    $cols['ukuran'] = $colLetter;
+                } elseif ($val === 'no' || $val === 'no.' || str_contains($val, 'nomor urut') || $val === 'nomor') {
                     $cols['no'] = $colLetter;
                 } elseif (str_contains($val, 'nama')) {
                     $cols['nama'] = $colLetter;
-                } elseif (str_contains($val, 'jenis kelamin') || $val === 'jk' || $val === 'l/p' || $val === 'gender') {
+                } elseif (str_contains($val, 'jenis kelamin') || $val === 'jk' || $val === 'l/p' || $val === 'gender' || $val === 'kelamin') {
                     $cols['jk'] = $colLetter;
-                } elseif (str_contains($val, 'jabatan') || str_contains($val, 'profesi') || str_contains($val, 'kategori')) {
+                } elseif (str_contains($val, 'jabatan') || str_contains($val, 'profesi') || str_contains($val, 'kategori') || str_contains($val, 'kelas')) {
                     $cols['jabatan'] = $colLetter;
-                } elseif (str_contains($val, 'panjang') || str_contains($val, 'telapak')) {
+                } elseif (str_contains($val, 'panjang') || str_contains($val, 'telapak') || str_contains($val, 'cm')) {
                     $cols['panjang'] = $colLetter;
-                } elseif (str_contains($val, 'ukuran') || str_contains($val, 'size') || str_contains($val, 'sepatu')) {
-                    $cols['ukuran'] = $colLetter;
                 }
             }
 
@@ -292,8 +346,8 @@ class ShoeExcelImportService
             'nama' => 'B',
             'jk' => 'C',
             'jabatan' => 'D',
-            'panjang' => 'E',
-            'ukuran' => 'F',
+            'panjang' => 'D',
+            'ukuran' => 'E',
         ];
     }
 
@@ -376,32 +430,38 @@ class ShoeExcelImportService
 
             // If shoe size is not found in designated column, search row cells for valid size number
             if ($ukuran === 0) {
-                foreach (['D', 'E', 'F', 'G'] as $tryCol) {
-                    $val = (int)$sheet->getCell("{$tryCol}{$r}")->getValue();
-                    if ($val >= 25 && $val <= 55) {
-                        $ukuran = $val;
-                        break;
+                foreach (['E', 'D', 'F', 'G', 'C', 'H'] as $tryCol) {
+                    $cellVal = $sheet->getCell("{$tryCol}{$r}")->getValue();
+                    if ($cellVal !== null && $cellVal !== '') {
+                        $parsed = (int)preg_replace('/[^0-9]/', '', (string)$cellVal);
+                        if ($parsed >= 20 && $parsed <= 60) {
+                            $ukuran = $parsed;
+                            break;
+                        }
                     }
                 }
             }
 
-            if ($ukuran > 0) {
-                $recipients[] = [
-                    'school_id' => $schoolId,
-                    'batch_id' => $batchId,
-                    'kategori' => $kategori,
-                    'nomor_urut' => $no > 0 ? $no : (count($recipients) + 1),
-                    'nama_lengkap' => $nama,
-                    'jenis_kelamin' => $jk,
-                    'jabatan' => $jabatan,
-                    'panjang_kaki' => $panjangKaki,
-                    'ukuran_sepatu' => $ukuran,
-                    'sheet_source' => $sheetName,
-                    'catatan' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
+            // Skip rows without shoe size (e.g. signature rows like HENI NUR'AENI, empty rows, or notes)
+            if ($ukuran <= 0) {
+                continue;
             }
+
+            $recipients[] = [
+                'school_id' => $schoolId,
+                'batch_id' => $batchId,
+                'kategori' => $kategori,
+                'nomor_urut' => $no > 0 ? $no : (count($recipients) + 1),
+                'nama_lengkap' => $nama,
+                'jenis_kelamin' => $jk,
+                'jabatan' => $jabatan,
+                'panjang_kaki' => $panjangKaki,
+                'ukuran_sepatu' => $ukuran,
+                'sheet_source' => $sheetName,
+                'catatan' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
         }
 
         return $recipients;

@@ -175,14 +175,12 @@ class ShoeController extends Controller
     {
         $request->validate([
             'excel_files' => 'nullable|array',
-            'excel_files.*' => 'file|mimes:xlsx,xls|max:20480',
-            'excel_file' => 'nullable|file|mimes:xlsx,xls|max:20480',
+            'excel_files.*' => 'file|max:51200',
+            'excel_file' => 'nullable|file|max:51200',
             'pic_nama' => 'nullable|string|max:100',
         ], [
-            'excel_files.*.mimes' => 'Setiap berkas harus berformat Excel (.xlsx atau .xls).',
-            'excel_files.*.max' => 'Ukuran setiap berkas maksimal adalah 20MB.',
-            'excel_file.mimes' => 'Format berkas harus berupa Excel (.xlsx atau .xls).',
-            'excel_file.max' => 'Ukuran berkas maksimal adalah 20MB.',
+            'excel_files.*.max' => 'Ukuran setiap berkas maksimal adalah 50MB.',
+            'excel_file.max' => 'Ukuran berkas maksimal adalah 50MB.',
         ]);
 
         $selectedPic = School::normalizePicName($request->input('pic_nama'));
@@ -198,6 +196,14 @@ class ShoeController extends Controller
 
         if (empty($files)) {
             return redirect()->route('shoes.index')->with('error', 'Silakan pilih setidaknya satu berkas Excel untuk di-import.');
+        }
+
+        // Validate extensions directly to avoid finfo zip mime-type ambiguity on Linux
+        foreach ($files as $file) {
+            $ext = strtolower($file->getClientOriginalExtension());
+            if (!in_array($ext, ['xlsx', 'xls', 'csv'])) {
+                return redirect()->route('shoes.index')->with('error', "Berkas '{$file->getClientOriginalName()}' harus berformat Excel (.xlsx atau .xls).");
+            }
         }
 
         $importedSummaries = [];
