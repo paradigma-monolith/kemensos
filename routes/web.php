@@ -89,6 +89,43 @@ Route::get('/clear-cache', function () {
         }
     }
 
+    // Auto-sync files from base_path('public/build') to public_path('build') if they differ
+    $baseBuild = base_path('public/build');
+    $pubBuild = public_path('build');
+    $syncedBuild = false;
+
+    if ($baseBuild !== $pubBuild && is_dir($baseBuild)) {
+        if (!is_dir($pubBuild)) {
+            @mkdir($pubBuild, 0755, true);
+        }
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($baseBuild, \RecursiveDirectoryIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
+        foreach ($it as $item) {
+            $sub = substr($item->getPathname(), strlen($baseBuild));
+            $dest = $pubBuild . $sub;
+            if ($item->isDir()) {
+                if (!is_dir($dest)) @mkdir($dest, 0755, true);
+            } else {
+                @copy($item->getPathname(), $dest);
+            }
+        }
+        $syncedBuild = true;
+    }
+
+    // Auto-extract public.zip if build/assets is missing or empty
+    $assetsDir = public_path('build/assets');
+    $unzipped = false;
+    if (!is_dir($assetsDir) || count(glob($assetsDir . '/*')) === 0) {
+        $zipPath = base_path('public.zip');
+        if (file_exists($zipPath) && class_exists('ZipArchive')) {
+            $zip = new \ZipArchive;
+            if ($zip->open($zipPath) === true) {
+                $zip->extractTo(public_path());
+                $zip->close();
+                $unzipped = true;
+            }
+        }
+    }
+
     // Ensure legacy / alternate css names exist as physical copies
     $assetsDir = public_path('build/assets');
     $createdCopies = [];
@@ -96,7 +133,7 @@ Route::get('/clear-cache', function () {
         $cssFiles = glob($assetsDir . '/*.css');
         if (!empty($cssFiles)) {
             $masterCss = $cssFiles[0];
-            foreach (['app-CePkOaw4.css', 'app-CePkGaw4.css', 'app-CI27iwGq.css'] as $target) {
+            foreach (['app-CePkOaw4.css', 'app-CePkGaw4.css', 'app-CI27iwGq.css', 'app-xGliZk1d.css', 'app-DHr3JjlA.css', 'app-Bl-vxXia.css'] as $target) {
                 $targetPath = $assetsDir . '/' . $target;
                 if (!file_exists($targetPath)) {
                     @copy($masterCss, $targetPath);
@@ -108,24 +145,71 @@ Route::get('/clear-cache', function () {
 
     return response()->json([
         'status' => 'success',
-        'message' => 'Cache view, config, route, OPcache, dan aset CSS berhasil disinkronkan! Silakan refresh halaman.',
+        'message' => 'Cache view, config, route, OPcache, dan aset JS/CSS berhasil disinkronkan!',
         'deleted_views_count' => $deletedViews,
         'created_css_copies' => $createdCopies,
+        'synced_build' => $syncedBuild,
+        'unzipped' => $unzipped,
+        'base_path' => base_path(),
+        'public_path' => public_path(),
+        'assets_count' => is_dir($assetsDir) ? count(glob($assetsDir . '/*')) : 0,
+        'assets_sample' => is_dir($assetsDir) ? array_map('basename', array_slice(glob($assetsDir . '/*'), 0, 10)) : [],
     ]);
 });
 
-// Fallback Route: Serve CSS dynamically if an old cached asset hash is requested
+// Robust Fallback Route: Serve CSS and JS dynamically if an asset hash is requested
 Route::get('/build/assets/{filename}', function ($filename) {
-    if (str_ends_with($filename, '.css')) {
-        $assetsPath = public_path('build/assets');
-        $files = glob($assetsPath . '/*.css');
-        if (!empty($files)) {
-            return response(file_get_contents($files[0]), 200, [
-                'Content-Type' => 'text/css; charset=UTF-8',
-                'Cache-Control' => 'no-cache, private',
+    $searchCandidates = [
+        public_path('build/assets/' . $filename),
+        base_path('public/build/assets/' . $filename),
+        base_path('public_html/build/assets/' . $filename),
+    ];
+
+    foreach ($searchCandidates as $candidate) {
+        if (file_exists($candidate)) {
+            $mime = str_ends_with($filename, '.css')
+                ? 'text/css; charset=UTF-8'
+                : (str_ends_with($filename, '.js') ? 'application/javascript; charset=UTF-8' : 'application/octet-stream');
+            return response(file_get_contents($candidate), 200, [
+                'Content-Type' => $mime,
+                'Cache-Control' => 'public, max-age=31536000',
             ]);
         }
     }
+
+    // Dynamic fallback for JS modules
+    if (str_ends_with($filename, '.js')) {
+        $prefix = explode('-', $filename)[0]; // e.g. 'inertia', 'echo', 'spa'
+        $dirs = [public_path('build/assets'), base_path('public/build/assets')];
+        foreach ($dirs as $d) {
+            if (is_dir($d)) {
+                $matches = glob($d . '/' . $prefix . '-*.js');
+                if (!empty($matches)) {
+                    return response(file_get_contents($matches[0]), 200, [
+                        'Content-Type' => 'application/javascript; charset=UTF-8',
+                        'Cache-Control' => 'no-cache, private',
+                    ]);
+                }
+            }
+        }
+    }
+
+    // Dynamic fallback for CSS
+    if (str_ends_with($filename, '.css')) {
+        $dirs = [public_path('build/assets'), base_path('public/build/assets')];
+        foreach ($dirs as $d) {
+            if (is_dir($d)) {
+                $matches = glob($d . '/*.css');
+                if (!empty($matches)) {
+                    return response(file_get_contents($matches[0]), 200, [
+                        'Content-Type' => 'text/css; charset=UTF-8',
+                        'Cache-Control' => 'no-cache, private',
+                    ]);
+                }
+            }
+        }
+    }
+
     abort(404);
 })->where('filename', '.*');
 
