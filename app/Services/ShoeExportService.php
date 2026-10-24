@@ -186,7 +186,7 @@ class ShoeExportService
         // If exporting all schools, also attach School Summary table below the size matrix in Sheet 1
         if (!$schoolId && $schools->isNotEmpty()) {
             $rowIdx += 3;
-            $sheet1->mergeCells("A{$rowIdx}:I{$rowIdx}");
+            $sheet1->mergeCells("A{$rowIdx}:H{$rowIdx}");
             $sheet1->setCellValue("A{$rowIdx}", 'TABEL REKAPITULASI KEBUTUHAN SETIAP SEKOLAH');
             $sheet1->getStyle("A{$rowIdx}")->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('1E293B');
 
@@ -198,9 +198,8 @@ class ShoeExportService
             $sheet1->setCellValue("E{$rowIdx}", 'Siswa (P)');
             $sheet1->setCellValue("F{$rowIdx}", 'Guru/Tendik (L)');
             $sheet1->setCellValue("G{$rowIdx}", 'Guru/Tendik (P)');
-            $sheet1->setCellValue("H{$rowIdx}", 'Ukuran Top');
-            $sheet1->setCellValue("I{$rowIdx}", 'TOTAL PASANG');
-            $sheet1->getStyle("A{$rowIdx}:I{$rowIdx}")->applyFromArray($headerStyleIndigo);
+            $sheet1->setCellValue("H{$rowIdx}", 'TOTAL PASANG');
+            $sheet1->getStyle("A{$rowIdx}:H{$rowIdx}")->applyFromArray($headerStyleIndigo);
             $sheet1->getRowDimension($rowIdx)->setRowHeight(24);
 
             $schRows = [];
@@ -213,15 +212,6 @@ class ShoeExportService
                 $stP = $schRecs->whereIn('kategori', ['guru', 'tendik'])->where('jenis_kelamin', 'P')->count();
                 $tot = $schRecs->count();
 
-                // Top size
-                $topSizeStr = '-';
-                $sizeCounts = $schRecs->groupBy('ukuran_sepatu')->map->count();
-                if ($sizeCounts->isNotEmpty()) {
-                    $topSizeVal = $sizeCounts->sortDesc()->keys()->first();
-                    $topSizeCnt = $sizeCounts->sortDesc()->first();
-                    $topSizeStr = "Size {$topSizeVal} ({$topSizeCnt} psg)";
-                }
-
                 $schRows[] = [
                     $noSch++,
                     $this->sanitizeCellValue($sch->nama_sekolah),
@@ -230,7 +220,6 @@ class ShoeExportService
                     $sP,
                     $stL,
                     $stP,
-                    $topSizeStr,
                     $tot,
                 ];
             }
@@ -239,8 +228,8 @@ class ShoeExportService
             $sheet1->fromArray($schRows, null, "A{$schStartRow}");
             $schEndRow = $schStartRow + count($schRows) - 1;
             $sheet1->getStyle("A{$schStartRow}:A{$schEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet1->getStyle("C{$schStartRow}:I{$schEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet1->getStyle("A{$schStartRow}:I{$schEndRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $sheet1->getStyle("C{$schStartRow}:H{$schEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet1->getStyle("A{$schStartRow}:H{$schEndRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
 
             // Total row for per-school summary
             $totSchRow = $schEndRow + 1;
@@ -250,9 +239,8 @@ class ShoeExportService
             $sheet1->setCellValue("E{$totSchRow}", $totSiswaP);
             $sheet1->setCellValue("F{$totSchRow}", $totStaffL);
             $sheet1->setCellValue("G{$totSchRow}", $totStaffP);
-            $sheet1->setCellValue("H{$totSchRow}", '-');
-            $sheet1->setCellValue("I{$totSchRow}", $grandTotal);
-            $sheet1->getStyle("A{$totSchRow}:I{$totSchRow}")->applyFromArray($totalRowStyle);
+            $sheet1->setCellValue("H{$totSchRow}", $grandTotal);
+            $sheet1->getStyle("A{$totSchRow}:H{$totSchRow}")->applyFromArray($totalRowStyle);
             $sheet1->getRowDimension($totSchRow)->setRowHeight(24);
         }
 

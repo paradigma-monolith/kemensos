@@ -173,6 +173,18 @@ class ShoeRecapTest extends TestCase
         $this->assertEquals('SR Cimahi', $rekapPerSchoolSheet->getCell('B5')->getValue());
         $this->assertEquals('SR Rembang', $rekapPerSchoolSheet->getCell('B6')->getValue());
 
+        // Check Rekap Ukuran Sepatu sheet: verify Ukuran Top is removed
+        $rekapUkuranSheet = $spreadsheet->getSheetByName('Rekap Ukuran Sepatu');
+        $this->assertNotNull($rekapUkuranSheet);
+        $rekapUkuranValues = [];
+        foreach ($rekapUkuranSheet->getRowIterator() as $row) {
+            foreach ($row->getCellIterator() as $cell) {
+                $rekapUkuranValues[] = (string)$cell->getValue();
+            }
+        }
+        $this->assertNotContains('Ukuran Top', $rekapUkuranValues);
+        $this->assertContains('TABEL REKAPITULASI KEBUTUHAN SETIAP SEKOLAH', $rekapUkuranValues);
+
         // Check School 1 sheet content
         $cimahiSheet = $spreadsheet->getSheetByName('SR Cimahi');
         $this->assertNotNull($cimahiSheet);
