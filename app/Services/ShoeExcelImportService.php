@@ -21,7 +21,7 @@ class ShoeExcelImportService
      * @return array Summary of import operation
      * @throws Exception
      */
-    public function import(string $filePath, string $originalName, ?int $userId = null): array
+    public function import(string $filePath, string $originalName, ?int $userId = null, ?string $selectedPic = null): array
     {
         if (!file_exists($filePath)) {
             throw new Exception("File Excel tidak ditemukan pada path: {$filePath}");
@@ -31,13 +31,16 @@ class ShoeExcelImportService
         $schoolName = $this->extractSchoolName($spreadsheet, $originalName);
         $metadata = $this->extractMetadata($spreadsheet);
 
-        return DB::transaction(function () use ($spreadsheet, $schoolName, $metadata, $originalName, $filePath, $userId) {
+        // Prioritize manually selected PIC, then fallback to metadata from file
+        $finalPic = !empty($selectedPic) ? trim($selectedPic) : ($metadata['pic_nama'] ?? null);
+
+        return DB::transaction(function () use ($spreadsheet, $schoolName, $metadata, $originalName, $filePath, $userId, $finalPic) {
             // 1. Create or update school
             $school = School::firstOrCreate(
                 ['nama_sekolah' => $schoolName],
                 [
                     'kota' => $metadata['kota'] ?? null,
-                    'pic_nama' => $metadata['pic_nama'] ?? null,
+                    'pic_nama' => $finalPic,
                     'kepala_sekolah_nama' => $metadata['kepala_sekolah_nama'] ?? null,
                     'kepala_sekolah_nip' => $metadata['kepala_sekolah_nip'] ?? null,
                     'tanggal_konfirmasi' => $metadata['tanggal_konfirmasi'] ?? null,
@@ -45,26 +48,34 @@ class ShoeExcelImportService
                 ]
             );
 
-            // Update existing school metadata if previously null or updated
-            $school->update(array_filter([
+            // Update existing school metadata
+            $updateData = array_filter([
                 'kota' => $metadata['kota'] ?? $school->kota,
-                'pic_nama' => $metadata['pic_nama'] ?? $school->pic_nama,
                 'kepala_sekolah_nama' => $metadata['kepala_sekolah_nama'] ?? $school->kepala_sekolah_nama,
                 'kepala_sekolah_nip' => $metadata['kepala_sekolah_nip'] ?? $school->kepala_sekolah_nip,
                 'tanggal_konfirmasi' => $metadata['tanggal_konfirmasi'] ?? $school->tanggal_konfirmasi,
-            ]));
+            ]);
+            if ($finalPic) {
+                $updateData['pic_nama'] = $finalPic;
+            }
+            if (!empty($updateData)) {
+                $school->update($updateData);
+            }
 
             // Prevent duplicate double-counting on re-import of the same school
             $school->recipients()->delete();
             $school->importBatches()->delete();
 
             // 2. Create import batch
+            $batchNotes = $finalPic ? "PIC: {$finalPic} | " : "";
+            $batchNotes .= "Import otomatis pada " . now()->format('Y-m-d H:i:s');
+
             $batch = ShoeImportBatch::create([
                 'school_id' => $school->id,
                 'file_name' => $originalName,
                 'file_path' => $filePath,
                 'imported_by' => $userId,
-                'notes' => "Import otomatis pada " . now()->format('Y-m-d H:i:s'),
+                'notes' => $batchNotes,
             ]);
 
             $recipients = [];

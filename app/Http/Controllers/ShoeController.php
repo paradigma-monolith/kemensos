@@ -30,12 +30,21 @@ class ShoeController extends Controller
         $schoolId = $request->query('school_id');
         $kategori = $request->query('kategori');
         $gender = $request->query('gender');
+        $pic = $request->query('pic');
         $search = $request->query('search');
+
+        // Master PIC list combining default constant and any existing database values
+        $existingPics = School::whereNotNull('pic_nama')->where('pic_nama', '!=', '')->distinct()->pluck('pic_nama')->toArray();
+        $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
+        sort($allPics);
 
         // 1. Overall & Filtered Stats
         $statsQuery = ShoeRecipient::query();
         if ($schoolId) {
             $statsQuery->where('school_id', $schoolId);
+        }
+        if ($pic) {
+            $statsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
         }
 
         $totalRecipients = (clone $statsQuery)->count();
@@ -52,6 +61,9 @@ class ShoeController extends Controller
         $matrixQuery = ShoeRecipient::query();
         if ($schoolId) {
             $matrixQuery->where('school_id', $schoolId);
+        }
+        if ($pic) {
+            $matrixQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
         }
 
         $sizeMatrix = $matrixQuery->selectRaw('
@@ -71,15 +83,17 @@ class ShoeController extends Controller
         ->get();
 
         // 3. Paginated Detailed Recipients
-        $recipientQuery = ShoeRecipient::with('school:id,nama_sekolah,kota')
+        $recipientQuery = ShoeRecipient::with('school:id,nama_sekolah,kota,pic_nama')
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->when($kategori, fn($q) => $q->where('kategori', $kategori))
             ->when($gender, fn($q) => $q->where('jenis_kelamin', $gender))
+            ->when($pic, fn($q) => $q->whereHas('school', fn($sq) => $sq->where('pic_nama', $pic)))
             ->when($search, function ($q, $search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->where('nama_lengkap', 'like', "%{$search}%")
                         ->orWhere('jabatan', 'like', "%{$search}%")
-                        ->orWhere('ukuran_sepatu', 'like', "%{$search}%");
+                        ->orWhere('ukuran_sepatu', 'like', "%{$search}%")
+                        ->orWhereHas('school', fn($sq) => $sq->where('nama_sekolah', 'like', "%{$search}%")->orWhere('pic_nama', 'like', "%{$search}%"));
                 });
             })
             ->orderBy('school_id')
@@ -90,11 +104,12 @@ class ShoeController extends Controller
 
         // 4. Schools list
         $schools = School::withCount(['recipients', 'importBatches'])
+            ->when($pic, fn($q) => $q->where('pic_nama', $pic))
             ->orderBy('nama_sekolah')
             ->get();
 
         // 5. Import Batches
-        $batches = ShoeImportBatch::with(['school:id,nama_sekolah', 'user:id,name'])
+        $batches = ShoeImportBatch::with(['school:id,nama_sekolah,pic_nama', 'user:id,name'])
             ->latest()
             ->take(20)
             ->get();
@@ -114,17 +129,19 @@ class ShoeController extends Controller
             'recipients' => $recipientQuery,
             'schools' => $schools,
             'batches' => $batches,
+            'picList' => $allPics,
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,
                 'kategori' => $kategori,
                 'gender' => $gender,
+                'pic' => $pic,
                 'search' => $search,
             ],
         ]);
     }
 
     /**
-     * Handle Excel file upload and import (supports multiple files).
+     * Handle Excel file upload and import (supports multiple files and PIC selection).
      */
     public function import(Request $request)
     {
@@ -132,12 +149,15 @@ class ShoeController extends Controller
             'excel_files' => 'nullable|array',
             'excel_files.*' => 'file|mimes:xlsx,xls|max:20480',
             'excel_file' => 'nullable|file|mimes:xlsx,xls|max:20480',
+            'pic_nama' => 'nullable|string|max:100',
         ], [
             'excel_files.*.mimes' => 'Setiap berkas harus berformat Excel (.xlsx atau .xls).',
             'excel_files.*.max' => 'Ukuran setiap berkas maksimal adalah 20MB.',
             'excel_file.mimes' => 'Format berkas harus berupa Excel (.xlsx atau .xls).',
             'excel_file.max' => 'Ukuran berkas maksimal adalah 20MB.',
         ]);
+
+        $selectedPic = $request->input('pic_nama');
 
         // Collect all uploaded files into an array
         $files = [];
@@ -178,7 +198,7 @@ class ShoeController extends Controller
                     }
                 }
 
-                $summary = $this->importService->import($absolutePath, $originalName, auth()->id());
+                $summary = $this->importService->import($absolutePath, $originalName, auth()->id(), $selectedPic);
                 $totalImportedShoes += $summary['total_sepatu'];
                 $importedSummaries[] = "{$summary['school_name']} ({$summary['total_sepatu']} pasang)";
 
@@ -295,5 +315,22 @@ class ShoeController extends Controller
         $school->delete();
 
         return redirect()->route('shoes.index')->with('success', "Data sekolah {$name} beserta seluruh data sepatu berhasil dihapus.");
+    }
+
+    /**
+     * Update school metadata (e.g. PIC, Kota, Kepala Sekolah).
+     */
+    public function updateSchool(Request $request, School $school)
+    {
+        $validated = $request->validate([
+            'pic_nama' => 'nullable|string|max:100',
+            'kota' => 'nullable|string|max:100',
+            'kepala_sekolah_nama' => 'nullable|string|max:100',
+            'kepala_sekolah_nip' => 'nullable|string|max:100',
+        ]);
+
+        $school->update($validated);
+
+        return redirect()->back()->with('success', "Informasi sekolah {$school->nama_sekolah} berhasil diperbarui.");
     }
 }

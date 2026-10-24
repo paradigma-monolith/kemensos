@@ -10,6 +10,20 @@ class School extends Model
 {
     use HasFactory;
 
+    public const DEFAULT_PICS = [
+        'PIC AZRIEL',
+        'PIC WENDY',
+        'PIC ADIL',
+        'PIC AYU',
+        'PIC DWI',
+        'PIC IKHSAN dan TRI',
+        'PIC INDRA',
+        'PIC RAHAYU',
+        'PIC MIFTAH',
+        'PIC RIVALDI',
+        'PIC YUPITA',
+    ];
+
     protected $fillable = [
         'nama_sekolah',
         'kota',

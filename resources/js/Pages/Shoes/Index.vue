@@ -24,7 +24,8 @@ import {
   ArrowUpDown,
   FileUp,
   RefreshCw,
-  Info
+  Info,
+  Edit2
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -48,12 +49,29 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  picList: {
+    type: Array,
+    default: () => [
+      'PIC AZRIEL',
+      'PIC WENDY',
+      'PIC ADIL',
+      'PIC AYU',
+      'PIC DWI',
+      'PIC IKHSAN dan TRI',
+      'PIC INDRA',
+      'PIC RAHAYU',
+      'PIC MIFTAH',
+      'PIC RIVALDI',
+      'PIC YUPITA',
+    ],
+  },
   filters: {
     type: Object,
     default: () => ({
       school_id: null,
       kategori: '',
       gender: '',
+      pic: '',
       search: '',
     }),
   },
@@ -69,14 +87,28 @@ const search = ref(props.filters.search || '');
 const selectedSchool = ref(props.filters.school_id || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
+const selectedPic = ref(props.filters.pic || '');
 
-// Upload Modal state (Multi-File Support)
+// Upload Modal state (Multi-File & PIC Support)
 const isUploadModalOpen = ref(false);
 const dragOver = ref(false);
 const selectedFiles = ref([]);
+const selectedPicOption = ref('');
+const customPicName = ref('');
 
 const uploadForm = useForm({
   excel_files: [],
+  pic_nama: '',
+});
+
+// Edit School Modal state
+const isEditSchoolModalOpen = ref(false);
+const editingSchool = ref(null);
+const editSchoolForm = useForm({
+  pic_nama: '',
+  kota: '',
+  kepala_sekolah_nama: '',
+  kepala_sekolah_nip: '',
 });
 
 const getUrl = (path) => {
@@ -95,6 +127,7 @@ const applyFilters = () => {
     school_id: selectedSchool.value || undefined,
     kategori: selectedKategori.value || undefined,
     gender: selectedGender.value || undefined,
+    pic: selectedPic.value || undefined,
     search: search.value || undefined,
   }, {
     preserveState: true,
@@ -108,6 +141,7 @@ const resetFilters = () => {
   selectedSchool.value = '';
   selectedKategori.value = '';
   selectedGender.value = '';
+  selectedPic.value = '';
   applyFilters();
 };
 
@@ -139,12 +173,47 @@ const removeFile = (idx) => {
 const submitUpload = () => {
   if (selectedFiles.value.length === 0) return;
 
+  // Compute final PIC name
+  let finalPic = '';
+  if (selectedPicOption.value === '__custom__') {
+    finalPic = customPicName.value.trim();
+  } else if (selectedPicOption.value === '__auto__') {
+    finalPic = '';
+  } else {
+    finalPic = selectedPicOption.value;
+  }
+
   uploadForm.excel_files = selectedFiles.value;
+  uploadForm.pic_nama = finalPic;
+
   uploadForm.post(getUrl('/shoes/import'), {
     onSuccess: () => {
       isUploadModalOpen.value = false;
       selectedFiles.value = [];
+      selectedPicOption.value = '';
+      customPicName.value = '';
       uploadForm.reset();
+    },
+  });
+};
+
+// Edit school handlers
+const openEditSchoolModal = (school) => {
+  editingSchool.value = school;
+  editSchoolForm.pic_nama = school.pic_nama || '';
+  editSchoolForm.kota = school.kota || '';
+  editSchoolForm.kepala_sekolah_nama = school.kepala_sekolah_nama || '';
+  editSchoolForm.kepala_sekolah_nip = school.kepala_sekolah_nip || '';
+  isEditSchoolModalOpen.value = true;
+};
+
+const submitEditSchool = () => {
+  if (!editingSchool.value) return;
+  editSchoolForm.patch(getUrl(`/shoes/schools/${editingSchool.value.id}`), {
+    preserveScroll: true,
+    onSuccess: () => {
+      isEditSchoolModalOpen.value = false;
+      editingSchool.value = null;
     },
   });
 };
@@ -380,6 +449,22 @@ const pdfExportUrl = computed(() => {
                 <option value="P">Perempuan (P)</option>
               </select>
             </div>
+
+            <!-- PIC Filter Selector -->
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <UserCheck class="w-3.5 h-3.5 text-indigo-500" />
+                PIC:
+              </label>
+              <select
+                v-model="selectedPic"
+                @change="applyFilters"
+                class="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="">Semua PIC</option>
+                <option v-for="p in picList" :key="p" :value="p">{{ p }}</option>
+              </select>
+            </div>
           </div>
 
           <!-- Search input -->
@@ -401,7 +486,7 @@ const pdfExportUrl = computed(() => {
               Cari
             </button>
             <button
-              v-if="selectedSchool || selectedKategori || selectedGender || search"
+              v-if="selectedSchool || selectedKategori || selectedGender || selectedPic || search"
               @click="resetFilters"
               class="px-2.5 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
               title="Reset Filter"
@@ -720,14 +805,23 @@ const pdfExportUrl = computed(() => {
               </div>
             </div>
 
-            <div class="pt-2 flex items-center justify-between text-xs">
+            <div class="pt-2 flex items-center justify-between text-xs border-t border-slate-100 dark:border-slate-800">
               <span class="text-slate-400">{{ sc.import_batches_count }}x Berkas Import</span>
-              <button
-                @click="deleteSchool(sc.id, sc.nama_sekolah)"
-                class="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 class="w-3.5 h-3.5" /> Hapus Sekolah
-              </button>
+              <div class="flex items-center gap-3">
+                <button
+                  @click="openEditSchoolModal(sc)"
+                  class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Ubah Nama PIC atau Data Sekolah"
+                >
+                  <Edit2 class="w-3.5 h-3.5" /> Ubah PIC
+                </button>
+                <button
+                  @click="deleteSchool(sc.id, sc.nama_sekolah)"
+                  class="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 class="w-3.5 h-3.5" /> Hapus
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -806,7 +900,52 @@ const pdfExportUrl = computed(() => {
           </button>
         </div>
 
-        <!-- Drag & Drop Zone -->
+        <!-- PIC Selection Dropdown Section -->
+        <div class="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <UserCheck class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Penanggung Jawab / Nama PIC:</span>
+              <span class="text-rose-500">*</span>
+            </label>
+            <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60">
+              Folder PIC
+            </span>
+          </div>
+
+          <div class="relative">
+            <select
+              v-model="selectedPicOption"
+              class="w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer"
+            >
+              <option value="" disabled>-- Silakan Pilih Nama PIC Pengumpul Berkas --</option>
+              <optgroup label="Daftar Folder PIC Resmi Kemensos / Sekolah Rakyat">
+                <option v-for="pic in picList" :key="pic" :value="pic">
+                  📁 {{ pic }}
+                </option>
+              </optgroup>
+              <optgroup label="Opsi Khusus">
+                <option value="__custom__">✏️ Tulis Nama PIC Manual...</option>
+                <option value="__auto__">📄 Ambil Otomatis dari Lembar Konfirmasi Excel</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Input Manual jika memilih Custom -->
+          <div v-if="selectedPicOption === '__custom__'" class="pt-1">
+            <input
+              v-model="customPicName"
+              type="text"
+              placeholder="Ketikkan nama PIC lengkap (contoh: PIC YULIA)..."
+              class="w-full px-3.5 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
+            />
+          </div>
+
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">
+            Setiap data sekolah yang di-upload pada proses ini akan secara otomatis ditugaskan ke PIC yang dipilih.
+          </p>
+        </div>
+
         <!-- Drag & Drop Zone / File Picker -->
         <div
           @dragover.prevent="dragOver = true"
@@ -910,6 +1049,101 @@ const pdfExportUrl = computed(() => {
             <span v-else>Mulai Import {{ selectedFiles.length > 0 ? `(${selectedFiles.length} Berkas)` : '' }}</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- MODAL: UBAH PIC & DATA SEKOLAH -->
+    <div
+      v-if="isEditSchoolModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+      @click.self="isEditSchoolModalOpen = false"
+    >
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Edit2 class="w-4 h-4" />
+            </div>
+            <div>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">Ubah Penanggung Jawab / PIC</h3>
+              <p class="text-xs text-slate-500 truncate max-w-[240px]">{{ editingSchool?.nama_sekolah }}</p>
+            </div>
+          </div>
+          <button
+            @click="isEditSchoolModalOpen = false"
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+          >
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <form @submit.prevent="submitEditSchool" class="space-y-3.5 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Pilih Nama PIC:
+            </label>
+            <select
+              v-model="editSchoolForm.pic_nama"
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">-- Tanpa PIC / Kosongkan --</option>
+              <option v-for="p in picList" :key="p" :value="p">{{ p }}</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Kota / Wilayah:
+            </label>
+            <input
+              v-model="editSchoolForm.kota"
+              type="text"
+              placeholder="Contoh: Cimahi"
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Nama Kepala Sekolah:
+            </label>
+            <input
+              v-model="editSchoolForm.kepala_sekolah_nama"
+              type="text"
+              placeholder="Nama Kepala Sekolah..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              NIP Kepala Sekolah:
+            </label>
+            <input
+              v-model="editSchoolForm.kepala_sekolah_nip"
+              type="text"
+              placeholder="NIP..."
+              class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              @click="isEditSchoolModalOpen = false"
+              class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="editSchoolForm.processing"
+              class="px-4 py-2 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all cursor-pointer shadow-sm"
+            >
+              Simpan Perubahan
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 

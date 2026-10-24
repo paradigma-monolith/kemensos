@@ -201,4 +201,110 @@ class ShoeRecapTest extends TestCase
         $this->assertStringContainsString('Rekap_Sepatu_', (string) $response->headers->get('content-disposition'));
         $this->assertEquals('application/pdf', $response->headers->get('content-type'));
     }
+
+    public function test_authenticated_user_can_filter_shoes_and_dashboard_by_pic(): void
+    {
+        $user = User::factory()->create();
+        $school1 = School::create([
+            'nama_sekolah' => 'Sekolah Azriel',
+            'pic_nama' => 'PIC AZRIEL',
+        ]);
+        $school2 = School::create([
+            'nama_sekolah' => 'Sekolah Wendy',
+            'pic_nama' => 'PIC WENDY',
+        ]);
+
+        $batch1 = ShoeImportBatch::create([
+            'school_id' => $school1->id,
+            'file_name' => 'azriel.xlsx',
+            'file_path' => 'excel_imports/azriel.xlsx',
+            'imported_by' => $user->id,
+            'notes' => 'PIC: PIC AZRIEL',
+        ]);
+        $batch2 = ShoeImportBatch::create([
+            'school_id' => $school2->id,
+            'file_name' => 'wendy.xlsx',
+            'file_path' => 'excel_imports/wendy.xlsx',
+            'imported_by' => $user->id,
+            'notes' => 'PIC: PIC WENDY',
+        ]);
+
+        ShoeRecipient::create([
+            'school_id' => $school1->id,
+            'batch_id' => $batch1->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Siswa Azriel',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 42,
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $school2->id,
+            'batch_id' => $batch2->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Siswa Wendy',
+            'jenis_kelamin' => 'P',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 38,
+        ]);
+
+        // Filter /shoes by PIC
+        $shoesResponse = $this->actingAs($user)->get('/shoes?pic=PIC+AZRIEL');
+        $shoesResponse->assertStatus(200);
+
+        // Filter /dashboard by PIC
+        $dashboardResponse = $this->actingAs($user)->get('/dashboard?pic=PIC+AZRIEL');
+        $dashboardResponse->assertStatus(200);
+
+        // Filter /api/shoes/dashboard-data by PIC
+        $apiResponse = $this->actingAs($user)->get('/api/shoes/dashboard-data?pic=PIC+AZRIEL');
+        $apiResponse->assertStatus(200);
+        $data = $apiResponse->json();
+        $this->assertEquals(1, $data['summary']['total_sekolah']);
+        $this->assertEquals(1, $data['summary']['total_sepatu']);
+        $this->assertEquals('PIC AZRIEL', $data['filters']['pic']);
+    }
+
+    public function test_authenticated_user_can_update_school_pic(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create([
+            'nama_sekolah' => 'Sekolah Baru',
+            'pic_nama' => 'PIC ADIL',
+        ]);
+
+        $response = $this->actingAs($user)->patch("/shoes/schools/{$school->id}", [
+            'pic_nama' => 'PIC RIVALDI',
+            'kota' => 'Bandung',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('schools', [
+            'id' => $school->id,
+            'pic_nama' => 'PIC RIVALDI',
+            'kota' => 'Bandung',
+        ]);
+    }
+
+    public function test_default_pics_list_matches_requirements(): void
+    {
+        $expectedPics = [
+            'PIC AZRIEL',
+            'PIC WENDY',
+            'PIC ADIL',
+            'PIC AYU',
+            'PIC DWI',
+            'PIC IKHSAN dan TRI',
+            'PIC INDRA',
+            'PIC RAHAYU',
+            'PIC MIFTAH',
+            'PIC RIVALDI',
+            'PIC YUPITA',
+        ];
+
+        $this->assertEquals($expectedPics, School::DEFAULT_PICS);
+    }
 }
+

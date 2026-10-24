@@ -19,8 +19,9 @@ class ShoeDashboardController extends Controller
         $compareSchoolId = $request->query('compare_school_id');
         $kategori = $request->query('kategori');
         $gender = $request->query('gender');
+        $pic = $request->query('pic');
 
-        $data = $this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender);
+        $data = $this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic);
 
         return Inertia::render('Shoes/Dashboard', $data);
     }
@@ -34,14 +35,15 @@ class ShoeDashboardController extends Controller
         $compareSchoolId = $request->query('compare_school_id');
         $kategori = $request->query('kategori');
         $gender = $request->query('gender');
+        $pic = $request->query('pic');
 
-        return response()->json($this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender));
+        return response()->json($this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic));
     }
 
     /**
      * Compile comprehensive dashboard & comparative metrics.
      */
-    protected function getDashboardData($schoolId = null, $compareSchoolId = null, $kategori = null, $gender = null): array
+    protected function getDashboardData($schoolId = null, $compareSchoolId = null, $kategori = null, $gender = null, $pic = null): array
     {
         $baseQuery = ShoeRecipient::query();
 
@@ -53,6 +55,9 @@ class ShoeDashboardController extends Controller
         }
         if (!empty($gender)) {
             $baseQuery->where('jenis_kelamin', $gender);
+        }
+        if (!empty($pic)) {
+            $baseQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
         }
 
         // 1. Executive Summary KPIs
@@ -78,8 +83,15 @@ class ShoeDashboardController extends Controller
         $minSize = (clone $baseQuery)->min('ukuran_sepatu') ?: 36;
         $maxSize = (clone $baseQuery)->max('ukuran_sepatu') ?: 45;
 
-        // Total Schools registered
-        $totalSekolah = School::has('recipients')->count();
+        // Total Schools registered (matching active filters)
+        $totalSekolahQuery = School::has('recipients');
+        if ($schoolId) {
+            $totalSekolahQuery->where('id', $schoolId);
+        }
+        if ($pic) {
+            $totalSekolahQuery->where('pic_nama', $pic);
+        }
+        $totalSekolah = $totalSekolahQuery->count();
 
         // 2. Comprehensive Size Breakdown by Category & Gender (Sizes 36–47)
         $matrixQuery = (clone $baseQuery)->selectRaw('
@@ -236,45 +248,51 @@ class ShoeDashboardController extends Controller
             $schoolB = $schools[1];
         }
 
+        $existingPics = School::whereNotNull('pic_nama')->where('pic_nama', '!=', '')->distinct()->pluck('pic_nama')->toArray();
+        $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
+        sort($allPics);
+
         return [
             'summary' => [
-                'total_sepatu' => $totalSepatu,
-                'total_sekolah' => $totalSekolah,
-                'total_siswa' => $totalSiswa,
-                'total_guru' => $totalGuru,
-                'total_tendik' => $totalTendik,
-                'total_staff' => $totalGuru + $totalTendik,
-                'total_pria' => $totalPria,
-                'total_wanita' => $totalWanita,
-                'top_size' => $topSize,
-                'top_size_count' => $topSizeCount,
-                'top_size_pct' => $topSizePct,
-                'avg_foot_length' => $avgFootLength,
-                'min_size' => $minSize,
-                'max_size' => $maxSize,
-            ],
-            'size_distribution' => $sizeDistribution,
-            'size_groups' => $sizeGroups,
-            'category_distribution' => [
-                ['name' => 'Siswa', 'value' => $totalSiswa, 'pct' => $totalSepatu > 0 ? round(($totalSiswa / $totalSepatu) * 100, 1) : 0],
-                ['name' => 'Guru', 'value' => $totalGuru, 'pct' => $totalSepatu > 0 ? round(($totalGuru / $totalSepatu) * 100, 1) : 0],
-                ['name' => 'Tenaga Kependidikan', 'value' => $totalTendik, 'pct' => $totalSepatu > 0 ? round(($totalTendik / $totalSepatu) * 100, 1) : 0],
-            ],
-            'gender_distribution' => [
-                ['name' => 'Laki-Laki', 'value' => $totalPria, 'pct' => $totalSepatu > 0 ? round(($totalPria / $totalSepatu) * 100, 1) : 0],
-                ['name' => 'Perempuan', 'value' => $totalWanita, 'pct' => $totalSepatu > 0 ? round(($totalWanita / $totalSepatu) * 100, 1) : 0],
-            ],
-            'schools' => $schools,
-            'comparator' => [
-                'school_a' => $schoolA,
-                'school_b' => $schoolB,
-            ],
-            'filters' => [
-                'school_id' => $schoolId ? (int)$schoolId : null,
-                'compare_school_id' => $compareSchoolId ? (int)$compareSchoolId : null,
-                'kategori' => $kategori ?: '',
-                'gender' => $gender ?: '',
-            ],
-        ];
-    }
+                    'total_sepatu' => $totalSepatu,
+                    'total_sekolah' => $totalSekolah,
+                    'total_siswa' => $totalSiswa,
+                    'total_guru' => $totalGuru,
+                    'total_tendik' => $totalTendik,
+                    'total_staff' => $totalGuru + $totalTendik,
+                    'total_pria' => $totalPria,
+                    'total_wanita' => $totalWanita,
+                    'top_size' => $topSize,
+                    'top_size_count' => $topSizeCount,
+                    'top_size_pct' => $topSizePct,
+                    'avg_foot_length' => $avgFootLength,
+                    'min_size' => $minSize,
+                    'max_size' => $maxSize,
+                ],
+                'size_distribution' => $sizeDistribution,
+                'size_groups' => $sizeGroups,
+                'category_distribution' => [
+                    ['name' => 'Siswa', 'value' => $totalSiswa, 'pct' => $totalSepatu > 0 ? round(($totalSiswa / $totalSepatu) * 100, 1) : 0],
+                    ['name' => 'Guru', 'value' => $totalGuru, 'pct' => $totalSepatu > 0 ? round(($totalGuru / $totalSepatu) * 100, 1) : 0],
+                    ['name' => 'Tenaga Kependidikan', 'value' => $totalTendik, 'pct' => $totalSepatu > 0 ? round(($totalTendik / $totalSepatu) * 100, 1) : 0],
+                ],
+                'gender_distribution' => [
+                    ['name' => 'Laki-Laki', 'value' => $totalPria, 'pct' => $totalSepatu > 0 ? round(($totalPria / $totalSepatu) * 100, 1) : 0],
+                    ['name' => 'Perempuan', 'value' => $totalWanita, 'pct' => $totalSepatu > 0 ? round(($totalWanita / $totalSepatu) * 100, 1) : 0],
+                ],
+                'schools' => $schools,
+                'comparator' => [
+                    'school_a' => $schoolA,
+                    'school_b' => $schoolB,
+                ],
+                'pic_list' => $allPics,
+                'filters' => [
+                    'school_id' => $schoolId ? (int)$schoolId : null,
+                    'compare_school_id' => $compareSchoolId ? (int)$compareSchoolId : null,
+                    'kategori' => $kategori ?: '',
+                    'gender' => $gender ?: '',
+                    'pic' => $pic ?: '',
+                ],
+            ];
+        }
 }

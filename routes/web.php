@@ -47,6 +47,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/export/excel', [ShoeController::class, 'exportExcel'])->name('export.excel');
         Route::get('/export/pdf', [ShoeController::class, 'exportPdf'])->name('export.pdf');
         Route::delete('/batches/{batch}', [ShoeController::class, 'destroyBatch'])->name('batch.destroy');
+        Route::patch('/schools/{school}', [ShoeController::class, 'updateSchool'])->name('school.update');
         Route::delete('/schools/{school}', [ShoeController::class, 'destroySchool'])->name('school.destroy');
     });
 

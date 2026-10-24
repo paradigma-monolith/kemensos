@@ -56,6 +56,22 @@ const props = defineProps({
     type: Object,
     default: () => ({ school_a: null, school_b: null }),
   },
+  pic_list: {
+    type: Array,
+    default: () => [
+      'PIC AZRIEL',
+      'PIC WENDY',
+      'PIC ADIL',
+      'PIC AYU',
+      'PIC DWI',
+      'PIC IKHSAN dan TRI',
+      'PIC INDRA',
+      'PIC RAHAYU',
+      'PIC MIFTAH',
+      'PIC RIVALDI',
+      'PIC YUPITA',
+    ],
+  },
   filters: {
     type: Object,
     default: () => ({
@@ -63,6 +79,7 @@ const props = defineProps({
       compare_school_id: null,
       kategori: '',
       gender: '',
+      pic: '',
     }),
   },
 });
@@ -80,6 +97,7 @@ const getUrl = (path) => {
 const selectedSchool = ref(props.filters.school_id ? String(props.filters.school_id) : '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
+const selectedPic = ref(props.filters.pic || '');
 
 // Side-by-Side Comparator State
 const schoolAId = ref(props.comparator.school_a ? String(props.comparator.school_a.id) : '');
@@ -111,6 +129,7 @@ const applyFilters = () => {
     compare_school_id: schoolBId.value || undefined,
     kategori: selectedKategori.value || undefined,
     gender: selectedGender.value || undefined,
+    pic: selectedPic.value || undefined,
   }, {
     preserveState: true,
     preserveScroll: true,
@@ -121,6 +140,7 @@ const resetFilters = () => {
   selectedSchool.value = '';
   selectedKategori.value = '';
   selectedGender.value = '';
+  selectedPic.value = '';
   router.get(getUrl('/dashboard'), {}, { preserveScroll: true });
 };
 
@@ -443,7 +463,7 @@ const schoolComparisonChartOption = computed(() => {
             <span>Filter Analitik:</span>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 max-w-3xl">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1 max-w-4xl">
             <!-- School Filter -->
             <div>
               <select
@@ -454,6 +474,20 @@ const schoolComparisonChartOption = computed(() => {
                 <option value="">Semua Sekolah (Agregat)</option>
                 <option v-for="sch in schools" :key="sch.id" :value="String(sch.id)">
                   {{ sch.nama_sekolah }} ({{ sch.total_recipients }} psg)
+                </option>
+              </select>
+            </div>
+
+            <!-- PIC Filter -->
+            <div>
+              <select
+                v-model="selectedPic"
+                @change="applyFilters"
+                class="w-full text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+              >
+                <option value="">Semua PIC</option>
+                <option v-for="p in pic_list" :key="p" :value="p">
+                  {{ p }}
                 </option>
               </select>
             </div>
@@ -488,7 +522,7 @@ const schoolComparisonChartOption = computed(() => {
 
           <!-- Reset Filter Button -->
           <button
-            v-if="selectedSchool || selectedKategori || selectedGender"
+            v-if="selectedSchool || selectedPic || selectedKategori || selectedGender"
             @click="resetFilters"
             class="text-xs px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/50 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
