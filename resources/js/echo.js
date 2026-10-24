@@ -17,7 +17,11 @@ export function getEcho() {
         return echoInstance;
     }
 
-    const appKey = import.meta.env.VITE_REVERB_APP_KEY || 'hybrid_reverb_key';
+    const appKey = import.meta.env.VITE_REVERB_APP_KEY;
+    if (!appKey) {
+        return null;
+    }
+
     const host = import.meta.env.VITE_REVERB_HOST || (typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1');
     const port = Number(import.meta.env.VITE_REVERB_PORT || 8080);
     const scheme = import.meta.env.VITE_REVERB_SCHEME || 'http';

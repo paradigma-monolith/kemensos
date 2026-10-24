@@ -14,12 +14,22 @@ class NotificationController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['unread_count' => 0, 'notifications' => []]);
+            }
 
-        return response()->json([
-            'unread_count' => $user->unreadNotifications()->count(),
-            'notifications' => $user->notifications()->take(10)->get(),
-        ]);
+            return response()->json([
+                'unread_count' => $user->unreadNotifications()->count(),
+                'notifications' => $user->notifications()->take(10)->get(),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'unread_count' => 0,
+                'notifications' => [],
+            ]);
+        }
     }
 
     /**

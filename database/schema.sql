@@ -58,6 +58,20 @@ CREATE TABLE `sessions` (
   KEY `sessions_last_activity_index` (`last_activity`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+DROP TABLE IF EXISTS `notifications`;
+CREATE TABLE `notifications` (
+  `id` CHAR(36) NOT NULL,
+  `type` VARCHAR(255) NOT NULL,
+  `notifiable_type` VARCHAR(125) NOT NULL,
+  `notifiable_id` BIGINT UNSIGNED NOT NULL,
+  `data` TEXT NOT NULL,
+  `read_at` TIMESTAMP NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT NULL,
+  `updated_at` TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `notifications_notifiable_type_notifiable_id_index` (`notifiable_type`, `notifiable_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- --------------------------------------------------------
 -- 3. Tabel Modul Inti Sepatu SR
 -- --------------------------------------------------------

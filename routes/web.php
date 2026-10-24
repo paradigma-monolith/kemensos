@@ -71,9 +71,59 @@ Route::middleware('auth')->group(function () {
 // Utility Route: Clear application view & config cache on shared hosting / cPanel
 Route::get('/clear-cache', function () {
     \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+
+    // Invalidate OPcache if enabled on PHP-FPM / cPanel
+    if (function_exists('opcache_reset')) {
+        @opcache_reset();
+    }
+
+    // Force delete all cached blade templates
+    $viewsPath = storage_path('framework/views');
+    $deletedViews = 0;
+    if (is_dir($viewsPath)) {
+        foreach (glob($viewsPath . '/*.php') as $v) {
+            @unlink($v);
+            $deletedViews++;
+        }
+    }
+
+    // Ensure legacy / alternate css names exist as physical copies
+    $assetsDir = public_path('build/assets');
+    $createdCopies = [];
+    if (is_dir($assetsDir)) {
+        $cssFiles = glob($assetsDir . '/*.css');
+        if (!empty($cssFiles)) {
+            $masterCss = $cssFiles[0];
+            foreach (['app-CePkOaw4.css', 'app-CePkGaw4.css', 'app-CI27iwGq.css'] as $target) {
+                $targetPath = $assetsDir . '/' . $target;
+                if (!file_exists($targetPath)) {
+                    @copy($masterCss, $targetPath);
+                    $createdCopies[] = $target;
+                }
+            }
+        }
+    }
+
     return response()->json([
         'status' => 'success',
-        'message' => 'Cache view, config, route, dan framework berhasil dibersihkan! Silakan refresh halaman login.',
+        'message' => 'Cache view, config, route, OPcache, dan aset CSS berhasil disinkronkan! Silakan refresh halaman.',
+        'deleted_views_count' => $deletedViews,
+        'created_css_copies' => $createdCopies,
     ]);
 });
+
+// Fallback Route: Serve CSS dynamically if an old cached asset hash is requested
+Route::get('/build/assets/{filename}', function ($filename) {
+    if (str_ends_with($filename, '.css')) {
+        $assetsPath = public_path('build/assets');
+        $files = glob($assetsPath . '/*.css');
+        if (!empty($files)) {
+            return response(file_get_contents($files[0]), 200, [
+                'Content-Type' => 'text/css; charset=UTF-8',
+                'Cache-Control' => 'no-cache, private',
+            ]);
+        }
+    }
+    abort(404);
+})->where('filename', '.*');
 
