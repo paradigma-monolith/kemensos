@@ -6,7 +6,6 @@ import {
   FileSpreadsheet,
   UploadCloud,
   Download,
-  FileText,
   School as SchoolIcon,
   Users,
   CheckCircle2,
@@ -52,17 +51,17 @@ const props = defineProps({
   picList: {
     type: Array,
     default: () => [
-      'PIC AZRIEL',
-      'PIC WENDY',
-      'PIC ADIL',
-      'PIC AYU',
-      'PIC DWI',
-      'PIC IKHSAN dan TRI',
-      'PIC INDRA',
-      'PIC RAHAYU',
-      'PIC MIFTAH',
-      'PIC RIVALDI',
-      'PIC YUPITA',
+      'AZRIEL',
+      'WENDY',
+      'ADIL',
+      'AYU',
+      'DWI',
+      'IKHSAN dan TRI',
+      'INDRA',
+      'RAHAYU',
+      'MIFTAH',
+      'RIVALDI',
+      'YUPITA',
     ],
   },
   filters: {
@@ -252,12 +251,6 @@ const excelExportUrl = computed(() => {
   if (selectedSchool.value) params.append('school_id', selectedSchool.value);
   return getUrl(`/shoes/export/excel?${params.toString()}`);
 });
-
-const pdfExportUrl = computed(() => {
-  const params = new URLSearchParams();
-  if (selectedSchool.value) params.append('school_id', selectedSchool.value);
-  return getUrl(`/shoes/export/pdf?${params.toString()}`);
-});
 </script>
 
 <template>
@@ -322,15 +315,6 @@ const pdfExportUrl = computed(() => {
           >
             <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             Export Excel
-          </a>
-
-          <!-- Export PDF Button -->
-          <a
-            :href="pdfExportUrl"
-            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm active:scale-95 transition-all cursor-pointer"
-          >
-            <FileText class="w-4 h-4 text-rose-600 dark:text-rose-400" />
-            Cetak PDF
           </a>
         </div>
       </div>
@@ -919,9 +903,9 @@ const pdfExportUrl = computed(() => {
               class="w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer"
             >
               <option value="" disabled>-- Silakan Pilih Nama PIC Pengumpul Berkas --</option>
-              <optgroup label="Daftar Folder PIC Resmi Kemensos / Sekolah Rakyat">
+              <optgroup label="Daftar Nama PIC Resmi Kemensos / Sekolah Rakyat">
                 <option v-for="pic in picList" :key="pic" :value="pic">
-                  📁 {{ pic }}
+                  👤 {{ pic }}
                 </option>
               </optgroup>
               <optgroup label="Opsi Khusus">
@@ -936,7 +920,7 @@ const pdfExportUrl = computed(() => {
             <input
               v-model="customPicName"
               type="text"
-              placeholder="Ketikkan nama PIC lengkap (contoh: PIC YULIA)..."
+              placeholder="Ketikkan nama PIC lengkap (contoh: YULIA)..."
               class="w-full px-3.5 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
             />
           </div>

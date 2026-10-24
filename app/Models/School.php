@@ -11,18 +11,26 @@ class School extends Model
     use HasFactory;
 
     public const DEFAULT_PICS = [
-        'PIC AZRIEL',
-        'PIC WENDY',
-        'PIC ADIL',
-        'PIC AYU',
-        'PIC DWI',
-        'PIC IKHSAN dan TRI',
-        'PIC INDRA',
-        'PIC RAHAYU',
-        'PIC MIFTAH',
-        'PIC RIVALDI',
-        'PIC YUPITA',
+        'AZRIEL',
+        'WENDY',
+        'ADIL',
+        'AYU',
+        'DWI',
+        'IKHSAN dan TRI',
+        'INDRA',
+        'RAHAYU',
+        'MIFTAH',
+        'RIVALDI',
+        'YUPITA',
     ];
+
+    public static function normalizePicName(?string $pic): ?string
+    {
+        if ($pic === null || trim($pic) === '') {
+            return null;
+        }
+        return trim(preg_replace('/^PIC\s*[:\-]?\s*/i', '', trim($pic)));
+    }
 
     protected $fillable = [
         'nama_sekolah',

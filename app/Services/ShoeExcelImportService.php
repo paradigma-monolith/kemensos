@@ -31,8 +31,9 @@ class ShoeExcelImportService
         $schoolName = $this->extractSchoolName($spreadsheet, $originalName);
         $metadata = $this->extractMetadata($spreadsheet);
 
-        // Prioritize manually selected PIC, then fallback to metadata from file
-        $finalPic = !empty($selectedPic) ? trim($selectedPic) : ($metadata['pic_nama'] ?? null);
+        // Prioritize manually selected PIC, then fallback to metadata from file, stripping any 'PIC ' prefix
+        $rawPic = !empty($selectedPic) ? trim($selectedPic) : ($metadata['pic_nama'] ?? null);
+        $finalPic = School::normalizePicName($rawPic);
 
         return DB::transaction(function () use ($spreadsheet, $schoolName, $metadata, $originalName, $filePath, $userId, $finalPic) {
             // 1. Create or update school

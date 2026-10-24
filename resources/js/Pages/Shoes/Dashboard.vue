@@ -59,17 +59,17 @@ const props = defineProps({
   pic_list: {
     type: Array,
     default: () => [
-      'PIC AZRIEL',
-      'PIC WENDY',
-      'PIC ADIL',
-      'PIC AYU',
-      'PIC DWI',
-      'PIC IKHSAN dan TRI',
-      'PIC INDRA',
-      'PIC RAHAYU',
-      'PIC MIFTAH',
-      'PIC RIVALDI',
-      'PIC YUPITA',
+      'AZRIEL',
+      'WENDY',
+      'ADIL',
+      'AYU',
+      'DWI',
+      'IKHSAN dan TRI',
+      'INDRA',
+      'RAHAYU',
+      'MIFTAH',
+      'RIVALDI',
+      'YUPITA',
     ],
   },
   filters: {
@@ -443,14 +443,6 @@ const schoolComparisonChartOption = computed(() => {
           >
             <Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Ekspor Excel</span>
-          </a>
-
-          <a
-            :href="getUrl('/shoes/export/pdf')"
-            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-xs active:scale-95 transition-all cursor-pointer"
-          >
-            <Download class="w-4 h-4 text-rose-600 dark:text-rose-400" />
-            <span>Cetak PDF</span>
           </a>
         </div>
       </div>

@@ -207,11 +207,11 @@ class ShoeRecapTest extends TestCase
         $user = User::factory()->create();
         $school1 = School::create([
             'nama_sekolah' => 'Sekolah Azriel',
-            'pic_nama' => 'PIC AZRIEL',
+            'pic_nama' => 'AZRIEL',
         ]);
         $school2 = School::create([
             'nama_sekolah' => 'Sekolah Wendy',
-            'pic_nama' => 'PIC WENDY',
+            'pic_nama' => 'WENDY',
         ]);
 
         $batch1 = ShoeImportBatch::create([
@@ -219,14 +219,14 @@ class ShoeRecapTest extends TestCase
             'file_name' => 'azriel.xlsx',
             'file_path' => 'excel_imports/azriel.xlsx',
             'imported_by' => $user->id,
-            'notes' => 'PIC: PIC AZRIEL',
+            'notes' => 'PIC: AZRIEL',
         ]);
         $batch2 = ShoeImportBatch::create([
             'school_id' => $school2->id,
             'file_name' => 'wendy.xlsx',
             'file_path' => 'excel_imports/wendy.xlsx',
             'imported_by' => $user->id,
-            'notes' => 'PIC: PIC WENDY',
+            'notes' => 'PIC: WENDY',
         ]);
 
         ShoeRecipient::create([
@@ -251,20 +251,20 @@ class ShoeRecapTest extends TestCase
         ]);
 
         // Filter /shoes by PIC
-        $shoesResponse = $this->actingAs($user)->get('/shoes?pic=PIC+AZRIEL');
+        $shoesResponse = $this->actingAs($user)->get('/shoes?pic=AZRIEL');
         $shoesResponse->assertStatus(200);
 
         // Filter /dashboard by PIC
-        $dashboardResponse = $this->actingAs($user)->get('/dashboard?pic=PIC+AZRIEL');
+        $dashboardResponse = $this->actingAs($user)->get('/dashboard?pic=AZRIEL');
         $dashboardResponse->assertStatus(200);
 
         // Filter /api/shoes/dashboard-data by PIC
-        $apiResponse = $this->actingAs($user)->get('/api/shoes/dashboard-data?pic=PIC+AZRIEL');
+        $apiResponse = $this->actingAs($user)->get('/api/shoes/dashboard-data?pic=AZRIEL');
         $apiResponse->assertStatus(200);
         $data = $apiResponse->json();
         $this->assertEquals(1, $data['summary']['total_sekolah']);
         $this->assertEquals(1, $data['summary']['total_sepatu']);
-        $this->assertEquals('PIC AZRIEL', $data['filters']['pic']);
+        $this->assertEquals('AZRIEL', $data['filters']['pic']);
     }
 
     public function test_authenticated_user_can_update_school_pic(): void
@@ -272,9 +272,10 @@ class ShoeRecapTest extends TestCase
         $user = User::factory()->create();
         $school = School::create([
             'nama_sekolah' => 'Sekolah Baru',
-            'pic_nama' => 'PIC ADIL',
+            'pic_nama' => 'ADIL',
         ]);
 
+        // Sending with or without PIC prefix automatically normalizes to person name
         $response = $this->actingAs($user)->patch("/shoes/schools/{$school->id}", [
             'pic_nama' => 'PIC RIVALDI',
             'kota' => 'Bandung',
@@ -283,7 +284,7 @@ class ShoeRecapTest extends TestCase
         $response->assertRedirect();
         $this->assertDatabaseHas('schools', [
             'id' => $school->id,
-            'pic_nama' => 'PIC RIVALDI',
+            'pic_nama' => 'RIVALDI',
             'kota' => 'Bandung',
         ]);
     }
@@ -291,20 +292,30 @@ class ShoeRecapTest extends TestCase
     public function test_default_pics_list_matches_requirements(): void
     {
         $expectedPics = [
-            'PIC AZRIEL',
-            'PIC WENDY',
-            'PIC ADIL',
-            'PIC AYU',
-            'PIC DWI',
-            'PIC IKHSAN dan TRI',
-            'PIC INDRA',
-            'PIC RAHAYU',
-            'PIC MIFTAH',
-            'PIC RIVALDI',
-            'PIC YUPITA',
+            'AZRIEL',
+            'WENDY',
+            'ADIL',
+            'AYU',
+            'DWI',
+            'IKHSAN dan TRI',
+            'INDRA',
+            'RAHAYU',
+            'MIFTAH',
+            'RIVALDI',
+            'YUPITA',
         ];
 
         $this->assertEquals($expectedPics, School::DEFAULT_PICS);
+    }
+
+    public function test_school_normalizes_pic_name_helper(): void
+    {
+        $this->assertEquals('AZRIEL', School::normalizePicName('PIC AZRIEL'));
+        $this->assertEquals('WENDY', School::normalizePicName('pic: WENDY'));
+        $this->assertEquals('IKHSAN dan TRI', School::normalizePicName('PIC - IKHSAN dan TRI'));
+        $this->assertEquals('YUPITA', School::normalizePicName('YUPITA'));
+        $this->assertNull(School::normalizePicName(''));
+        $this->assertNull(School::normalizePicName(null));
     }
 }
 

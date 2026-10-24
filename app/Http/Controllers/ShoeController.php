@@ -34,7 +34,13 @@ class ShoeController extends Controller
         $search = $request->query('search');
 
         // Master PIC list combining default constant and any existing database values
-        $existingPics = School::whereNotNull('pic_nama')->where('pic_nama', '!=', '')->distinct()->pluck('pic_nama')->toArray();
+        $existingPics = School::whereNotNull('pic_nama')
+            ->where('pic_nama', '!=', '')
+            ->distinct()
+            ->pluck('pic_nama')
+            ->map(fn($p) => School::normalizePicName($p))
+            ->filter()
+            ->toArray();
         $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
         sort($allPics);
 
@@ -44,7 +50,8 @@ class ShoeController extends Controller
             $statsQuery->where('school_id', $schoolId);
         }
         if ($pic) {
-            $statsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
+            $normPic = School::normalizePicName($pic);
+            $statsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
 
         $totalRecipients = (clone $statsQuery)->count();
@@ -63,7 +70,8 @@ class ShoeController extends Controller
             $matrixQuery->where('school_id', $schoolId);
         }
         if ($pic) {
-            $matrixQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
+            $normPic = School::normalizePicName($pic);
+            $matrixQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
 
         $sizeMatrix = $matrixQuery->selectRaw('
@@ -87,7 +95,10 @@ class ShoeController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->when($kategori, fn($q) => $q->where('kategori', $kategori))
             ->when($gender, fn($q) => $q->where('jenis_kelamin', $gender))
-            ->when($pic, fn($q) => $q->whereHas('school', fn($sq) => $sq->where('pic_nama', $pic)))
+            ->when($pic, function ($q, $pic) {
+                $norm = School::normalizePicName($pic);
+                $q->whereHas('school', fn($sq) => $sq->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm));
+            })
             ->when($search, function ($q, $search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->where('nama_lengkap', 'like', "%{$search}%")
@@ -104,7 +115,10 @@ class ShoeController extends Controller
 
         // 4. Schools list
         $schools = School::withCount(['recipients', 'importBatches'])
-            ->when($pic, fn($q) => $q->where('pic_nama', $pic))
+            ->when($pic, function ($q, $pic) {
+                $norm = School::normalizePicName($pic);
+                $q->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm);
+            })
             ->orderBy('nama_sekolah')
             ->get();
 
@@ -157,7 +171,7 @@ class ShoeController extends Controller
             'excel_file.max' => 'Ukuran berkas maksimal adalah 20MB.',
         ]);
 
-        $selectedPic = $request->input('pic_nama');
+        $selectedPic = School::normalizePicName($request->input('pic_nama'));
 
         // Collect all uploaded files into an array
         $files = [];
@@ -328,6 +342,10 @@ class ShoeController extends Controller
             'kepala_sekolah_nama' => 'nullable|string|max:100',
             'kepala_sekolah_nip' => 'nullable|string|max:100',
         ]);
+
+        if (array_key_exists('pic_nama', $validated)) {
+            $validated['pic_nama'] = School::normalizePicName($validated['pic_nama']);
+        }
 
         $school->update($validated);
 

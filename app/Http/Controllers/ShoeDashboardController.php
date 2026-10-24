@@ -57,7 +57,8 @@ class ShoeDashboardController extends Controller
             $baseQuery->where('jenis_kelamin', $gender);
         }
         if (!empty($pic)) {
-            $baseQuery->whereHas('school', fn($q) => $q->where('pic_nama', $pic));
+            $normPic = School::normalizePicName($pic);
+            $baseQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
 
         // 1. Executive Summary KPIs
@@ -89,7 +90,8 @@ class ShoeDashboardController extends Controller
             $totalSekolahQuery->where('id', $schoolId);
         }
         if ($pic) {
-            $totalSekolahQuery->where('pic_nama', $pic);
+            $normPic = School::normalizePicName($pic);
+            $totalSekolahQuery->where(fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
         $totalSekolah = $totalSekolahQuery->count();
 
@@ -248,7 +250,13 @@ class ShoeDashboardController extends Controller
             $schoolB = $schools[1];
         }
 
-        $existingPics = School::whereNotNull('pic_nama')->where('pic_nama', '!=', '')->distinct()->pluck('pic_nama')->toArray();
+        $existingPics = School::whereNotNull('pic_nama')
+            ->where('pic_nama', '!=', '')
+            ->distinct()
+            ->pluck('pic_nama')
+            ->map(fn($p) => School::normalizePicName($p))
+            ->filter()
+            ->toArray();
         $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
         sort($allPics);
 
