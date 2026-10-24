@@ -793,22 +793,27 @@ const excelExportUrl = computed(() => {
             <table class="w-full text-left text-sm">
               <thead class="bg-slate-50 dark:bg-slate-800/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th class="py-3 px-4">Nama File</th>
-                  <th class="py-3 px-4">Sekolah</th>
-                  <th class="py-3 px-4">PIC Ukur</th>
-                  <th class="py-3 px-4 text-center">Total Sepatu</th>
-                  <th class="py-3 px-4 text-center">Rincian (S / G / T)</th>
-                  <th class="py-3 px-4">Waktu Import</th>
-                  <th class="py-3 px-4 text-center">Aksi</th>
+                  <th class="py-3 px-4 w-52 max-w-[200px]">Nama File</th>
+                  <th class="py-3 px-4 min-w-[180px]">Sekolah</th>
+                  <th class="py-3 px-4 whitespace-nowrap">PIC Ukur</th>
+                  <th class="py-3 px-4 text-center whitespace-nowrap">Total Sepatu</th>
+                  <th class="py-3 px-4 text-center whitespace-nowrap">Rincian (S / G / T)</th>
+                  <th class="py-3 px-4 whitespace-nowrap">Waktu Import</th>
+                  <th class="py-3 px-4 text-center w-20 whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                 <tr v-for="b in batches" :key="b.id">
-                  <td class="py-3 px-4 font-mono font-medium text-slate-800 dark:text-slate-200">
-                    {{ b.file_name }}
+                  <td class="py-3 px-4 max-w-[200px]" :title="b.file_name">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <FileSpreadsheet class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span class="font-mono text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                        {{ b.file_name }}
+                      </span>
+                    </div>
                   </td>
                   <td class="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{{ b.school?.nama_sekolah || '-' }}</td>
-                  <td class="py-3 px-4">
+                  <td class="py-3 px-4 whitespace-nowrap">
                     <span
                       v-if="b.school?.pic_nama"
                       class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60"
@@ -818,16 +823,16 @@ const excelExportUrl = computed(() => {
                     </span>
                     <span v-else class="text-slate-400 italic text-xs">Belum diatur</span>
                   </td>
-                  <td class="py-3 px-4 text-center font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                  <td class="py-3 px-4 text-center font-bold text-indigo-600 dark:text-indigo-400 font-mono whitespace-nowrap">
                     {{ b.total_sepatu }}
                   </td>
-                  <td class="py-3 px-4 text-center font-mono text-slate-500">
+                  <td class="py-3 px-4 text-center font-mono text-slate-500 whitespace-nowrap">
                     {{ b.total_siswa }} / {{ b.total_guru }} / {{ b.total_tendik }}
                   </td>
-                  <td class="py-3 px-4 text-slate-500">
+                  <td class="py-3 px-4 text-slate-500 whitespace-nowrap">
                     {{ new Date(b.created_at).toLocaleString('id-ID') }}
                   </td>
-                  <td class="py-3 px-4 text-center">
+                  <td class="py-3 px-4 text-center whitespace-nowrap">
                     <div class="flex items-center justify-center gap-1.5">
                       <a
                         :href="getUrl(`/shoes/batches/${b.id}/download`)"
