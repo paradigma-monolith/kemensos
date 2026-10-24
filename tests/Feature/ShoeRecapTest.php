@@ -13,11 +13,69 @@ class ShoeRecapTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_authenticated_user_can_access_shoe_recap_dashboard(): void
+    public function test_authenticated_user_can_access_interactive_dashboard(): void
     {
         $user = User::factory()->create();
-        $response = $this->actingAs($user)->get('/');
+        $response = $this->actingAs($user)->get('/dashboard');
         $response->assertStatus(200);
+
+        // Also test root landing
+        $homeResponse = $this->actingAs($user)->get('/');
+        $homeResponse->assertStatus(200);
+    }
+
+    public function test_authenticated_user_can_access_shoes_data_index(): void
+    {
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->get('/shoes');
+        $response->assertStatus(200);
+    }
+
+    public function test_dashboard_api_returns_comparative_data(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create([
+            'nama_sekolah' => 'Sekolah Rakyat Cimahi',
+            'kota' => 'Cimahi',
+        ]);
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school->id,
+            'file_name' => 'test.xlsx',
+            'file_path' => 'excel_imports/test.xlsx',
+            'imported_by' => $user->id,
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Budi Santoso',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 40,
+        ]);
+
+        $response = $this->actingAs($user)->get('/api/shoes/dashboard-data');
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'summary' => [
+                'total_sepatu',
+                'total_sekolah',
+                'total_siswa',
+                'total_guru',
+                'total_tendik',
+                'total_pria',
+                'total_wanita',
+                'top_size',
+            ],
+            'size_distribution',
+            'size_groups',
+            'category_distribution',
+            'gender_distribution',
+            'schools',
+            'comparator',
+            'filters',
+        ]);
     }
 
     public function test_authenticated_user_can_export_excel_fast(): void

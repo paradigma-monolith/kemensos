@@ -7,6 +7,7 @@ import {
   Bell, 
   History, 
   FileSpreadsheet,
+  LayoutDashboard,
   Menu,
   X,
   Radio,
@@ -44,7 +45,8 @@ const activeNav = computed(() => {
   const p = window.location.pathname;
   if (p.includes('/audit-logs')) return 'audit';
   if (p.includes('/profile')) return 'profile';
-  if (p.includes('/shoes') || p === '/' || p.endsWith('/public') || p.endsWith('/public/')) return 'shoes';
+  if (p.includes('/shoes')) return 'shoes';
+  if (p.includes('/dashboard') || p === '/' || p.endsWith('/public') || p.endsWith('/public/')) return 'dashboard';
   return '';
 });
 
@@ -276,10 +278,18 @@ const handleLogout = () => {
           </a>
         </div>
 
-        <!-- Navigation Links: Sepatu SR & Audit Trail -->
+        <!-- Navigation Links: Dashboard, Sepatu SR & Audit Trail -->
         <nav class="hidden md:flex items-center gap-1.5 lg:gap-2 text-xs font-medium shrink-0">
           <a :href="getUrl('/')" 
             @click="handleNav('/', $event)"
+            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
+            :class="activeNav === 'dashboard' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold ring-1 ring-indigo-300 dark:ring-indigo-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+            <LayoutDashboard class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span>Dashboard</span>
+          </a>
+
+          <a :href="getUrl('/shoes')" 
+            @click="handleNav('/shoes', $event)"
             class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
             :class="activeNav === 'shoes' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold ring-1 ring-emerald-300 dark:ring-emerald-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
             <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />

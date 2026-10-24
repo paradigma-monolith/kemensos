@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShoeController;
+use App\Http\Controllers\ShoeDashboardController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,8 +35,10 @@ Route::match(['get', 'post'], '/logout', [AuthController::class, 'logout'])->nam
 
 // --- Protected Enterprise Routes (Requires Authentication) ---
 Route::middleware('auth')->group(function () {
-    // Primary Landing: Manajemen Rekapitulasi Sepatu SR
-    Route::get('/', [ShoeController::class, 'index'])->name('home');
+    // Primary Landing: Dashboard Interaktif Analitik & Perbandingan
+    Route::get('/', [ShoeDashboardController::class, 'index'])->name('home');
+    Route::get('/dashboard', [ShoeDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/api/shoes/dashboard-data', [ShoeDashboardController::class, 'apiData'])->name('shoes.dashboard.api');
 
     // Sepatu SR - Import & Data Recap Module
     Route::prefix('shoes')->name('shoes.')->group(function () {
