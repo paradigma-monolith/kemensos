@@ -67,3 +67,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead'])->name('readAll');
     });
 });
+
+// Utility Route: Clear application view & config cache on shared hosting / cPanel
+Route::get('/clear-cache', function () {
+    \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Cache view, config, route, dan framework berhasil dibersihkan! Silakan refresh halaman login.',
+    ]);
+});
+
