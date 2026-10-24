@@ -79,6 +79,15 @@ Route::get('/clear-cache', function () {
         @opcache_reset();
     }
 
+    // Remove Vite hot reload file if present in production
+    $removedHot = false;
+    foreach ([public_path('hot'), base_path('public/hot'), base_path('public_html/hot')] as $h) {
+        if (file_exists($h)) {
+            @unlink($h);
+            $removedHot = true;
+        }
+    }
+
     // Force delete all cached blade templates
     $viewsPath = storage_path('framework/views');
     $deletedViews = 0;
@@ -147,6 +156,7 @@ Route::get('/clear-cache', function () {
         'status' => 'success',
         'message' => 'Cache view, config, route, OPcache, dan aset JS/CSS berhasil disinkronkan!',
         'deleted_views_count' => $deletedViews,
+        'removed_hot' => $removedHot,
         'created_css_copies' => $createdCopies,
         'synced_build' => $syncedBuild,
         'unzipped' => $unzipped,
