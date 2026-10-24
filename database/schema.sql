@@ -2,6 +2,7 @@
 -- DATABASE SCHEMA: SISTEM MANAJEMEN REKAPITULASI SEPATU SR (SEKOLAH RAKYAT)
 -- KEMENTERIAN SOSIAL REPUBLIK INDONESIA
 -- Target Database: MySQL 5.7+ / MariaDB 10.3+ / MySQL 8.0+
+-- Database Name: bkkr3927_kemensos
 -- Karakteristik: UTF8MB4, InnoDB Engine, Foreign Key Cascades & Indexes
 -- ==============================================================================
 
@@ -10,13 +11,13 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
 
 -- --------------------------------------------------------
--- 1. Database Creation (Opsional jika database sudah dibuat sebelumnya)
+-- 1. Database Creation (Aktifkan jika belum dibuat di cPanel/MySQL)
 -- --------------------------------------------------------
-CREATE DATABASE IF NOT EXISTS `sepatu_sr` 
+CREATE DATABASE IF NOT EXISTS `bkkr3927_kemensos` 
   CHARACTER SET utf8mb4 
   COLLATE utf8mb4_unicode_ci;
 
-USE `sepatu_sr`;
+USE `bkkr3927_kemensos`;
 
 -- --------------------------------------------------------
 -- 2. Tabel Pengguna (Users) & Autentikasi
