@@ -35,12 +35,12 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Buat Kata Sandi Baru - Hybrid Laravel" />
+  <Head title="Buat Kata Sandi Baru - Sepatu SR" />
 
-  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-indigo-500 selection:text-white">
+  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-emerald-500 selection:text-white">
     <div class="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
-      <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 mx-auto flex items-center justify-center font-black text-white text-lg shadow-lg">
-        HL
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 mx-auto flex items-center justify-center font-black text-white text-lg shadow-lg">
+        SR
       </div>
       <h2 class="mt-4 text-2xl font-bold tracking-tight text-white">
         Perbarui Kata Sandi

@@ -26,17 +26,17 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Lupa Kata Sandi - Hybrid Laravel" />
+  <Head title="Lupa Kata Sandi - Sepatu SR" />
 
-  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-indigo-500 selection:text-white">
+  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-emerald-500 selection:text-white">
     <!-- Glow -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
-      <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[550px] h-[300px] bg-indigo-600/15 blur-3xl rounded-full"></div>
+      <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[550px] h-[300px] bg-emerald-600/15 blur-3xl rounded-full"></div>
     </div>
 
     <div class="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
-      <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 mx-auto flex items-center justify-center font-black text-white text-lg shadow-lg shadow-indigo-600/30">
-        HL
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 mx-auto flex items-center justify-center font-black text-white text-lg shadow-lg shadow-emerald-600/30">
+        SR
       </div>
       <h2 class="mt-4 text-2xl font-bold tracking-tight text-white">
         Atur Ulang Kata Sandi

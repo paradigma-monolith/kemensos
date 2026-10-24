@@ -25,8 +25,12 @@ const props = defineProps({
 });
 
 const getUrl = (path) => {
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/hybridlaravel/public')) {
-    return `/hybridlaravel/public${path}`;
+  if (typeof window !== 'undefined') {
+    const match = window.location.pathname.match(/^(\/[^\/]+\/public)/);
+    if (match) return `${match[1]}${path}`;
+    if (window.location.pathname.includes('/hybridlaravel/public')) {
+      return `/hybridlaravel/public${path}`;
+    }
   }
   return path;
 };
@@ -329,6 +333,36 @@ const getUrl = (path) => {
           </div>
         </div>
       </section>
+
+      <!-- Sepatu SR: Import & Rekap Data Ukuran Sepatu Module -->
+      <div class="mt-16 relative bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-900/60 border border-indigo-700/50 hover:border-indigo-500 rounded-3xl p-8 backdrop-blur-md shadow-2xl transition-all group overflow-hidden">
+        <div class="absolute -right-12 -top-12 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          <div class="space-y-2 max-w-2xl">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <FileSpreadsheet class="w-3.5 h-3.5 text-indigo-400" />
+              <span>Modul Produksi Sepatu SR</span>
+            </div>
+            <h3 class="text-2xl font-extrabold text-white tracking-tight">
+              Sistem Import &amp; Rekapitulasi Data Ukuran Sepatu
+            </h3>
+            <p class="text-sm text-slate-300 leading-relaxed">
+              Dukungan multi-sekolah untuk membaca file Excel konfirmasi (Siswa, Guru Laki-laki, dan Guru Perempuan). Kalkulasi otomatis matriks ukuran sepatu (36–47), normalisasi data, serta export Excel &amp; PDF siap cetak untuk vendor.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <a
+              :href="getUrl('/shoes')"
+              class="inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 active:scale-95 transition-all"
+            >
+              <FileSpreadsheet class="w-4 h-4" />
+              <span>Buka Modul Sepatu SR</span>
+              <span>&rarr;</span>
+            </a>
+          </div>
+        </div>
+      </div>
 
       <!-- Interactive Architectural Comparison Cards -->
       <div class="mt-16 grid md:grid-cols-2 gap-8">

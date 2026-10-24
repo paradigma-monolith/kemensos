@@ -22,13 +22,8 @@ import {
   Pin,
   PinOff,
   ShieldCheck,
-  FileSpreadsheet,
-  FlaskConical,
-  Rocket
+  FileSpreadsheet
 } from 'lucide-vue-next';
-import { useAppMode } from '../composables/useAppMode';
-
-const { appMode, toggleMode } = useAppMode();
 
 const props = defineProps({
   mode: {
@@ -50,8 +45,10 @@ const emit = defineEmits(['update:open', 'toggleCollapse']);
 const isSpa = computed(() => props.mode === 'spa');
 
 const prefix = computed(() => {
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/hybridlaravel/public')) {
-    return '/hybridlaravel/public';
+  if (typeof window !== 'undefined') {
+    const match = window.location.pathname.match(/^(\/[^\/]+\/public)/);
+    if (match) return match[1];
+    if (window.location.pathname.includes('/hybridlaravel/public')) return '/hybridlaravel/public';
   }
   return '';
 });
@@ -142,223 +139,45 @@ const handleLogout = () => {
   window.location.href = getUrl('/logout');
 };
 
-const navSections = computed(() => {
-  if (appMode.value === 'production') {
-    return [
+const navSections = computed(() => [
+  {
+    title: 'Manajemen Sepatu SR',
+    items: [
       {
-        title: 'Pusat Kontrol',
-        items: [
-          {
-            name: 'Pusat Dashboard',
-            path: '/inertia/dashboard',
-            url: getUrl('/inertia/dashboard'),
-            icon: LayoutDashboard,
-            active: !isSpa.value && props.currentRoute === 'dashboard',
-            badge: 'Utama',
-            badgeColor: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
-          },
-          {
-            name: 'Arsitektur Hub',
-            path: '/',
-            url: getUrl('/'),
-            icon: Home,
-            active: props.currentRoute === 'hub',
-            badge: 'Core',
-            badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-          },
-        ],
+        name: 'Rekapitulasi Ukuran',
+        path: '/',
+        url: getUrl('/'),
+        icon: FileSpreadsheet,
+        active: props.currentRoute === 'shoes' || props.currentRoute === 'home' || !props.currentRoute,
+        badge: 'Utama',
+        badgeColor: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      },
+    ],
+  },
+  {
+    title: 'Keamanan & Tata Kelola',
+    items: [
+      {
+        name: 'Audit Trail Logs',
+        path: '/audit-logs',
+        url: getUrl('/audit-logs'),
+        icon: History,
+        active: props.currentRoute === 'audit',
+        badge: 'Spatie',
+        badgeColor: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
       },
       {
-        title: 'Operasional Sistem',
-        items: [
-          {
-            name: 'Katalog Data Master',
-            path: '/inertia/products',
-            url: getUrl('/inertia/products'),
-            icon: Boxes,
-            active: !isSpa.value && props.currentRoute === 'products',
-            badge: 'Data',
-            badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-          },
-        ],
+        name: 'Profil & Keamanan',
+        path: '/profile',
+        url: getUrl('/profile'),
+        icon: UserIcon,
+        active: props.currentRoute === 'profile',
+        badge: 'RBAC',
+        badgeColor: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
       },
-      {
-        title: 'Enterprise & Tata Kelola',
-        items: [
-          {
-            name: 'Audit Trail Logs',
-            path: '/audit-logs',
-            url: getUrl('/audit-logs'),
-            icon: History,
-            active: props.currentRoute === 'audit',
-            badge: 'Spatie',
-            badgeColor: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-          },
-          {
-            name: 'Profil & Keamanan',
-            path: '/profile',
-            url: getUrl('/profile'),
-            icon: UserIcon,
-            active: props.currentRoute === 'profile',
-            badge: 'RBAC',
-            badgeColor: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-          },
-        ],
-      },
-      {
-        title: 'DevTools & Monitoring',
-        items: [
-          {
-            name: 'Scramble API Docs',
-            path: '/docs/api',
-            url: getUrl('/docs/api'),
-            icon: BookOpen,
-            external: true,
-            badge: 'OpenAPI',
-            badgeColor: 'bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
-          },
-          {
-            name: 'Laravel Pulse',
-            path: '/pulse',
-            url: getUrl('/pulse'),
-            icon: Activity,
-            external: true,
-            badge: 'Metrics',
-            badgeColor: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
-          },
-        ],
-      },
-    ];
-  }
-
-  // Mode Demo (Showcase full playground modules)
-  return [
-    {
-      title: 'Pusat Kontrol',
-      items: [
-        {
-          name: 'Arsitektur Hub',
-          path: '/',
-          url: getUrl('/'),
-          icon: Home,
-          active: props.currentRoute === 'hub',
-          badge: 'Core',
-          badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-        },
-      ],
-    },
-    {
-      title: 'Inertia.js Monolith',
-      items: [
-        {
-          name: 'Dashboard',
-          path: '/inertia/dashboard',
-          url: getUrl('/inertia/dashboard'),
-          icon: LayoutDashboard,
-          active: !isSpa.value && props.currentRoute === 'dashboard',
-          badge: 'SSR',
-          badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-        },
-        {
-          name: 'Demo MapLibre GL',
-          path: '/inertia/map-demo',
-          url: getUrl('/inertia/map-demo'),
-          icon: Globe,
-          active: !isSpa.value && (props.currentRoute === 'map' || props.currentRoute === 'map.demo'),
-          badge: 'WebGL',
-          badgeColor: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
-        },
-        {
-          name: 'Katalog Produk',
-          path: '/inertia/products',
-          url: getUrl('/inertia/products'),
-          icon: Boxes,
-          active: !isSpa.value && props.currentRoute === 'products',
-          badge: 'CRUD',
-          badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-        },
-      ],
-    },
-    {
-      title: 'Vue 3 SPA Mode',
-      items: [
-        {
-          name: 'SPA Home',
-          path: '/spa',
-          url: getUrl('/spa'),
-          icon: Sparkles,
-          active: isSpa.value && props.currentRoute === 'home',
-          badge: 'Vite',
-          badgeColor: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
-        },
-        {
-          name: 'SPA Produk',
-          path: '/spa/products',
-          url: getUrl('/spa/products'),
-          icon: ShoppingBag,
-          active: isSpa.value && props.currentRoute === 'products',
-          badge: 'REST',
-          badgeColor: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
-        },
-        {
-          name: 'API Explorer',
-          path: '/spa/api-explorer',
-          url: getUrl('/spa/api-explorer'),
-          icon: Compass,
-          active: isSpa.value && props.currentRoute === 'api-explorer',
-          badge: 'Client',
-          badgeColor: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
-        },
-      ],
-    },
-    {
-      title: 'Enterprise & Tata Kelola',
-      items: [
-        {
-          name: 'Audit Trail Logs',
-          path: '/audit-logs',
-          url: getUrl('/audit-logs'),
-          icon: History,
-          active: props.currentRoute === 'audit',
-          badge: 'Spatie',
-          badgeColor: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-        },
-        {
-          name: 'Profil & Keamanan',
-          path: '/profile',
-          url: getUrl('/profile'),
-          icon: UserIcon,
-          active: props.currentRoute === 'profile',
-          badge: 'RBAC',
-          badgeColor: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-        },
-      ],
-    },
-    {
-      title: 'Telemetri & DevTools',
-      items: [
-        {
-          name: 'Scramble API Docs',
-          path: '/docs/api',
-          url: getUrl('/docs/api'),
-          icon: BookOpen,
-          external: true,
-          badge: 'OpenAPI',
-          badgeColor: 'bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
-        },
-        {
-          name: 'Laravel Pulse',
-          path: '/pulse',
-          url: getUrl('/pulse'),
-          icon: Activity,
-          external: true,
-          badge: 'Metrics',
-          badgeColor: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
-        },
-      ],
-    },
-  ];
-});
+    ],
+  },
+]);
 </script>
 
 <template>
@@ -394,20 +213,17 @@ const navSections = computed(() => {
       <div class="h-16 px-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
         <a :href="getUrl('/')" @click="handleNavClick('/', false, $event)" class="flex items-center gap-3 overflow-hidden group cursor-pointer">
           <div 
-            class="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-white shadow-lg transition-all"
-            :class="isSpa 
-              ? 'bg-gradient-to-tr from-emerald-600 to-teal-400 shadow-emerald-500/20' 
-              : 'bg-gradient-to-tr from-indigo-600 to-violet-500 shadow-indigo-500/20'"
+            class="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center font-black text-white shadow-lg transition-all bg-gradient-to-tr from-indigo-600 via-purple-600 to-indigo-700 shadow-indigo-500/20"
           >
-            <span class="text-xs tracking-wider">HL</span>
+            <span class="text-xs tracking-wider">SR</span>
           </div>
 
           <div v-if="!isCollapsed" class="transition-opacity duration-200">
             <span class="block text-sm font-bold text-slate-900 dark:text-white tracking-tight group-hover:text-indigo-600 dark:group-hover:text-slate-200 transition-colors">
-              Hybrid Laravel
+              Sepatu SR
             </span>
             <span class="block text-[10px] font-mono text-indigo-600 dark:text-indigo-400">
-              Starter Kit v2.0
+              Sistem Rekapitulasi
             </span>
           </div>
         </a>
@@ -505,38 +321,6 @@ const navSections = computed(() => {
               <span v-if="item.external" class="text-cyan-400 ml-1">↗</span>
             </div>
           </a>
-        </div>
-      </div>
-
-      <!-- App Mode Quick Switcher Strip in Sidebar -->
-      <div class="px-3 py-2 border-t border-slate-200 dark:border-slate-800/80 bg-slate-100/60 dark:bg-slate-900/40">
-        <div v-if="!isCollapsed" class="flex items-center justify-between text-[11px]">
-          <div class="flex items-center gap-1.5 font-medium" :class="appMode === 'demo' ? 'text-purple-600 dark:text-purple-400' : 'text-emerald-600 dark:text-emerald-400'">
-            <component :is="appMode === 'demo' ? FlaskConical : Rocket" class="w-3.5 h-3.5" />
-            <span>{{ appMode === 'demo' ? 'Mode Demo' : 'Mode Produksi' }}</span>
-          </div>
-          <button
-            type="button"
-            @click="toggleMode"
-            class="text-[10px] font-mono px-2 py-0.5 rounded-md border cursor-pointer hover:scale-105 transition-all"
-            :class="appMode === 'demo'
-              ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
-              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'"
-            title="Klik untuk beralih mode"
-          >
-            Beralih ⇄
-          </button>
-        </div>
-        <div v-else class="flex justify-center">
-          <button
-            type="button"
-            @click="toggleMode"
-            class="p-1 rounded-lg transition-all cursor-pointer"
-            :class="appMode === 'demo' ? 'text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/40' : 'text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'"
-            :title="`Beralih Mode (Saat ini: ${appMode === 'demo' ? 'Demo' : 'Produksi'})`"
-          >
-            <component :is="appMode === 'demo' ? FlaskConical : Rocket" class="w-4 h-4" />
-          </button>
         </div>
       </div>
 

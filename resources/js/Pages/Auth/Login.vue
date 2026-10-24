@@ -60,33 +60,33 @@ const fillStaffCredentials = () => {
 </script>
 
 <template>
-  <Head title="Masuk - Hybrid Laravel" />
+  <Head title="Masuk - Sepatu SR" />
 
-  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-indigo-500 selection:text-white">
+  <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-emerald-500 selection:text-white">
     <!-- Ambient Background Glows -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
-      <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-indigo-600/20 via-purple-600/15 to-emerald-600/20 blur-3xl rounded-full"></div>
-      <div class="absolute -bottom-40 right-10 w-[450px] h-[300px] bg-indigo-600/10 blur-3xl rounded-full"></div>
+      <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-emerald-600/20 via-teal-600/15 to-indigo-600/20 blur-3xl rounded-full"></div>
+      <div class="absolute -bottom-40 right-10 w-[450px] h-[300px] bg-emerald-600/10 blur-3xl rounded-full"></div>
     </div>
 
     <!-- Header / Brand -->
     <div class="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
       <div class="inline-flex items-center justify-center">
-        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-black text-white text-xl shadow-xl shadow-indigo-600/30 ring-1 ring-white/20">
-          HL
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 flex items-center justify-center font-black text-white text-xl shadow-xl shadow-emerald-600/30 ring-1 ring-white/20">
+          SR
         </div>
       </div>
 
-      <div class="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-medium bg-indigo-950/80 border border-indigo-700/50 text-indigo-300">
+      <div class="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-medium bg-emerald-950/80 border border-emerald-700/50 text-emerald-300">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>Sanctum Stateful Session Auth</span>
+        <span>Sistem Rekapitulasi Sepatu SR</span>
       </div>
 
       <h1 class="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-        Hybrid Laravel Hub
+        Sepatu SR
       </h1>
       <p class="mt-2 text-sm text-slate-400">
-        Satu sesi login terpadu untuk <strong class="text-indigo-400 font-semibold">Inertia.js Bridge</strong> dan <strong class="text-emerald-400 font-semibold">Traditional SPA</strong>.
+        Manajemen &amp; Rekapitulasi Ukuran Sepatu Siswa, Guru &amp; Tendik (Sekolah Rakyat).
       </p>
     </div>
 
@@ -192,21 +192,21 @@ const fillStaffCredentials = () => {
           <button
             type="submit"
             :disabled="form.processing"
-            class="w-full mt-2 py-3 px-4 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed group cursor-pointer"
+            class="w-full mt-2 py-3 px-4 rounded-xl font-semibold text-sm text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed group cursor-pointer"
           >
             <span v-if="form.processing" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
             <LogIn v-else class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            <span>{{ form.processing ? 'Memverifikasi...' : 'Masuk ke Platform' }}</span>
+            <span>{{ form.processing ? 'Memverifikasi...' : 'Masuk ke Sistem Sepatu SR' }}</span>
           </button>
         </form>
 
-        <!-- Demo Account Auto-Fill Helper -->
+        <!-- Account Helper -->
         <div class="mt-6 pt-6 border-t border-slate-800/80">
-          <div class="p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-800/40 hover:border-indigo-600/60 transition-all">
+          <div class="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-800/40 hover:border-emerald-600/60 transition-all">
             <div class="flex items-center justify-between mb-2.5">
-              <div class="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
+              <div class="flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
                 <Sparkles class="w-3.5 h-3.5 text-amber-400" />
-                <span>Pilih Akun Demo Otomatis</span>
+                <span>Pilih Akun Cepat</span>
               </div>
             </div>
 
@@ -215,19 +215,19 @@ const fillStaffCredentials = () => {
               <button
                 type="button"
                 @click="fillDemoCredentials"
-                class="px-2.5 py-1.5 text-[11px] font-semibold rounded-xl bg-indigo-600/30 hover:bg-indigo-600/60 text-indigo-200 border border-indigo-500/40 transition-all text-left flex flex-col cursor-pointer"
+                class="px-2.5 py-1.5 text-[11px] font-semibold rounded-xl bg-emerald-600/30 hover:bg-emerald-600/60 text-emerald-200 border border-emerald-500/40 transition-all text-left flex flex-col cursor-pointer"
               >
                 <span>👑 Super Admin</span>
-                <span class="text-[9px] font-mono text-indigo-300 font-normal">admin@hybrid.local</span>
+                <span class="text-[9px] font-mono text-emerald-300 font-normal">admin@hybrid.local</span>
               </button>
 
               <button
                 type="button"
                 @click="fillStaffCredentials"
-                class="px-2.5 py-1.5 text-[11px] font-semibold rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 border border-emerald-700/50 transition-all text-left flex flex-col cursor-pointer"
+                class="px-2.5 py-1.5 text-[11px] font-semibold rounded-xl bg-slate-800/60 hover:bg-slate-700/60 text-slate-200 border border-slate-700/50 transition-all text-left flex flex-col cursor-pointer"
               >
                 <span>💼 Staff Operator</span>
-                <span class="text-[9px] font-mono text-emerald-300 font-normal">staff@hybrid.local</span>
+                <span class="text-[9px] font-mono text-slate-300 font-normal">staff@hybrid.local</span>
               </button>
             </div>
 
@@ -239,22 +239,22 @@ const fillStaffCredentials = () => {
 
       </div>
 
-      <!-- Architecture Footnote Pill -->
+      <!-- Footnote Pill -->
       <div class="mt-6 text-center space-y-2">
         <div class="inline-flex items-center gap-3 text-xs text-slate-400">
           <span class="inline-flex items-center gap-1">
             <ShieldCheck class="w-3.5 h-3.5 text-emerald-400" />
-            <span>HTTP-Only Cookies</span>
+            <span>Multi-Sheet Excel</span>
           </span>
           <span class="text-slate-600">&bull;</span>
           <span class="inline-flex items-center gap-1">
-            <Layers class="w-3.5 h-3.5 text-indigo-400" />
-            <span>Inertia &amp; SPA Ready</span>
+            <Layers class="w-3.5 h-3.5 text-teal-400" />
+            <span>Rekap Matriks Ukuran</span>
           </span>
           <span class="text-slate-600">&bull;</span>
           <span class="inline-flex items-center gap-1">
             <Cpu class="w-3.5 h-3.5 text-amber-400" />
-            <span>Octane Fast Engine</span>
+            <span>Ekspor PDF &amp; Excel</span>
           </span>
         </div>
       </div>
