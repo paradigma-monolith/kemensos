@@ -612,7 +612,7 @@ const excelExportUrl = computed(() => {
                 </span>
               </div>
               <p class="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
-                Ditemukan ukuran sepatu di luar rentang standar (26–46), nilai ekstrem (&gt; 100), atau panjang kaki tidak wajar. Anda dapat memfilter dan langsung memperbaikinya lewat tombol koreksi di tabel.
+                Ditemukan ukuran sepatu di luar rentang standar (26–46) atau nilai ekstrem (&gt; 100). Anda dapat memfilter dan langsung memperbaikinya lewat tombol koreksi di tabel.
               </p>
             </div>
           </div>

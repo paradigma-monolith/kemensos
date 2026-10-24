@@ -403,9 +403,21 @@ class ShoeRecapTest extends TestCase
             'panjang_kaki' => 38,
         ]);
 
+        // Recipient with unusual foot length (e.g. excel date or mm) but valid shoe size
+        $weirdFootLength = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Weird Foot Length User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 38,
+            'panjang_kaki' => 4616.6,
+        ]);
+
         $this->assertFalse($normal->is_anomaly);
         $this->assertFalse($normal26->is_anomaly);
         $this->assertFalse($normal46->is_anomaly);
+        $this->assertFalse($weirdFootLength->is_anomaly); // Foot length ignored
         $this->assertTrue($tooSmall25->is_anomaly);
         $this->assertStringContainsString('< 26', $tooSmall25->anomaly_reason);
         $this->assertTrue($tooLarge47->is_anomaly);
