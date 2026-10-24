@@ -81,8 +81,8 @@ class ShoeDashboardController extends Controller
         $topSizePct = $totalSepatu > 0 ? round(($topSizeCount / $totalSepatu) * 100, 1) : 0;
 
         // Size Range
-        $minSize = (clone $baseQuery)->min('ukuran_sepatu') ?: 36;
-        $maxSize = (clone $baseQuery)->max('ukuran_sepatu') ?: 45;
+        $minSize = (clone $baseQuery)->min('ukuran_sepatu') ?: 26;
+        $maxSize = (clone $baseQuery)->max('ukuran_sepatu') ?: 46;
         $totalAnomalies = (clone $baseQuery)->anomaly()->count();
         $extremeAnomalies = (clone $baseQuery)->where('ukuran_sepatu', '>', 100)->count();
 
@@ -97,7 +97,7 @@ class ShoeDashboardController extends Controller
         }
         $totalSekolah = $totalSekolahQuery->count();
 
-        // 2. Comprehensive Size Breakdown by Category & Gender (Sizes 36–47)
+        // 2. Comprehensive Size Breakdown by Category & Gender (Sizes 26–46)
         $matrixQuery = (clone $baseQuery)->selectRaw('
             ukuran_sepatu,
             COUNT(*) as total,
@@ -113,7 +113,7 @@ class ShoeDashboardController extends Controller
         ->get();
 
         $sizeMap = [];
-        for ($s = 36; $s <= 46; $s++) {
+        for ($s = 26; $s <= 46; $s++) {
             $sizeMap[$s] = [
                 'size' => $s,
                 'total' => 0,
@@ -145,19 +145,19 @@ class ShoeDashboardController extends Controller
         $sizeDistribution = array_values($sizeMap);
 
         // 3. Vendor Size Grouping
-        $groupKecil = 0; // 36 - 38
-        $groupSedang = 0; // 39 - 41
-        $groupBesar = 0; // 42 - 44
-        $groupEkstra = 0; // 45+
+        $groupKecil = 0; // 26 - 35
+        $groupSedang = 0; // 36 - 39
+        $groupBesar = 0; // 40 - 43
+        $groupEkstra = 0; // 44 - 46+
 
         foreach ($sizeMap as $item) {
             $sz = $item['size'];
             $cnt = $item['total'];
-            if ($sz <= 38) {
+            if ($sz <= 35) {
                 $groupKecil += $cnt;
-            } elseif ($sz <= 41) {
+            } elseif ($sz <= 39) {
                 $groupSedang += $cnt;
-            } elseif ($sz <= 44) {
+            } elseif ($sz <= 43) {
                 $groupBesar += $cnt;
             } else {
                 $groupEkstra += $cnt;
@@ -166,25 +166,25 @@ class ShoeDashboardController extends Controller
 
         $sizeGroups = [
             'kecil' => [
-                'label' => 'Kecil (Size 36–38)',
+                'label' => 'Kecil (Size 26–35)',
                 'count' => $groupKecil,
                 'pct' => $totalSepatu > 0 ? round(($groupKecil / $totalSepatu) * 100, 1) : 0,
                 'color' => '#06b6d4', // cyan
             ],
             'sedang' => [
-                'label' => 'Sedang (Size 39–41)',
+                'label' => 'Sedang (Size 36–39)',
                 'count' => $groupSedang,
                 'pct' => $totalSepatu > 0 ? round(($groupSedang / $totalSepatu) * 100, 1) : 0,
                 'color' => '#10b981', // emerald
             ],
             'besar' => [
-                'label' => 'Besar (Size 42–44)',
+                'label' => 'Besar (Size 40–43)',
                 'count' => $groupBesar,
                 'pct' => $totalSepatu > 0 ? round(($groupBesar / $totalSepatu) * 100, 1) : 0,
                 'color' => '#6366f1', // indigo
             ],
             'ekstra' => [
-                'label' => 'Ekstra (Size 45+)',
+                'label' => 'Ekstra (Size 44–46+)',
                 'count' => $groupEkstra,
                 'pct' => $totalSepatu > 0 ? round(($groupEkstra / $totalSepatu) * 100, 1) : 0,
                 'color' => '#f59e0b', // amber

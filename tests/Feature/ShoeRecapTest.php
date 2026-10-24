@@ -353,6 +353,46 @@ class ShoeRecapTest extends TestCase
             'panjang_kaki' => 24.5,
         ]);
 
+        $normal26 = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Normal 26 User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 26,
+            'panjang_kaki' => 16.5,
+        ]);
+
+        $normal46 = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Normal 46 User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 46,
+            'panjang_kaki' => 29.5,
+        ]);
+
+        $tooSmall25 = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Too Small User',
+            'kategori' => 'siswa',
+            'jenis_kelamin' => 'P',
+            'ukuran_sepatu' => 25,
+            'panjang_kaki' => 15.0,
+        ]);
+
+        $tooLarge47 = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nama_lengkap' => 'Too Large User',
+            'kategori' => 'guru',
+            'jenis_kelamin' => 'L',
+            'ukuran_sepatu' => 47,
+            'panjang_kaki' => 30.0,
+        ]);
+
         $extreme = ShoeRecipient::create([
             'school_id' => $school->id,
             'batch_id' => $batch->id,
@@ -364,6 +404,12 @@ class ShoeRecapTest extends TestCase
         ]);
 
         $this->assertFalse($normal->is_anomaly);
+        $this->assertFalse($normal26->is_anomaly);
+        $this->assertFalse($normal46->is_anomaly);
+        $this->assertTrue($tooSmall25->is_anomaly);
+        $this->assertStringContainsString('< 26', $tooSmall25->anomaly_reason);
+        $this->assertTrue($tooLarge47->is_anomaly);
+        $this->assertStringContainsString('> 46', $tooLarge47->anomaly_reason);
         $this->assertTrue($extreme->is_anomaly);
         $this->assertStringContainsString('> 100', $extreme->anomaly_reason);
 

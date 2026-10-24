@@ -360,7 +360,7 @@ const excelExportUrl = computed(() => {
             Rekapitulasi Kebutuhan Ukuran Sepatu
           </h1>
           <p class="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-2xl">
-            Import data konfirmasi Excel per sekolah, kalkulasi otomatis kebutuhan matriks ukuran sepatu (36–47), dan export laporan siap produksi untuk vendor.
+            Import data konfirmasi Excel per sekolah, kalkulasi otomatis kebutuhan matriks ukuran sepatu (26–46), dan export laporan siap produksi untuk vendor.
           </p>
         </div>
 
@@ -612,7 +612,7 @@ const excelExportUrl = computed(() => {
                 </span>
               </div>
               <p class="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
-                Ditemukan ukuran sepatu di luar standar (&gt; 50 atau &gt; 100) atau panjang kaki tidak wajar. Anda dapat memfilter dan langsung memperbaikinya lewat tombol koreksi di tabel.
+                Ditemukan ukuran sepatu di luar rentang standar (26–46), nilai ekstrem (&gt; 100), atau panjang kaki tidak wajar. Anda dapat memfilter dan langsung memperbaikinya lewat tombol koreksi di tabel.
               </p>
             </div>
           </div>
@@ -1471,7 +1471,7 @@ const excelExportUrl = computed(() => {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Ukuran Sepatu (Standar 25 - 50):
+                  Ukuran Sepatu (Standar 26 - 46):
                 </label>
                 <input
                   v-model.number="editRecipientForm.ukuran_sepatu"
@@ -1481,8 +1481,11 @@ const excelExportUrl = computed(() => {
                   required
                   placeholder="Contoh: 38"
                   class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border font-bold font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  :class="editRecipientForm.ukuran_sepatu > 50 ? 'border-rose-400 text-rose-600' : 'border-slate-200 dark:border-slate-700'"
+                  :class="(editRecipientForm.ukuran_sepatu > 46 || editRecipientForm.ukuran_sepatu < 26) ? 'border-rose-400 text-rose-600' : 'border-slate-200 dark:border-slate-700'"
                 />
+                <span v-if="editRecipientForm.ukuran_sepatu < 26 || editRecipientForm.ukuran_sepatu > 46" class="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mt-1 block">
+                  ⚠️ Di luar rentang standar (26 s/d 46).
+                </span>
                 <span v-if="editRecipientForm.ukuran_sepatu > 100" class="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-1 block">
                   ⚠️ Nilai &gt; 100 tergolong ekstrem.
                 </span>

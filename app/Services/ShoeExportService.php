@@ -70,7 +70,7 @@ class ShoeExportService
             ->orderBy('ukuran_sepatu')
             ->pluck('ukuran_sepatu')
             ->toArray();
-        $sizes = array_unique(array_merge(range(36, 46), array_map('intval', $availableSizes)));
+        $sizes = array_unique(array_merge(range(26, 46), array_map('intval', $availableSizes)));
         sort($sizes);
 
         // Fetch schools and pre-grouped recipients
@@ -135,8 +135,8 @@ class ShoeExportService
             $cntWanita = $matching->where('jenis_kelamin', 'P')->count();
             $cntTotal = $matching->count();
 
-            // Skip zero rows if total is 0 and size is outside standard 36-46
-            if ($cntTotal === 0 && ($s < 36 || $s > 46)) {
+            // Skip zero rows if total is 0 and size is outside standard 26-46
+            if ($cntTotal === 0 && ($s < 26 || $s > 46)) {
                 continue;
             }
 
