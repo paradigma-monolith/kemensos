@@ -48,6 +48,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/export/pdf', [ShoeController::class, 'exportPdf'])->name('export.pdf');
         Route::get('/batches/{batch}/download', [ShoeController::class, 'downloadBatch'])->name('batch.download');
         Route::delete('/batches/{batch}', [ShoeController::class, 'destroyBatch'])->name('batch.destroy');
+        Route::post('/sync-storage', [ShoeController::class, 'syncStorage'])->name('sync.storage');
         Route::patch('/schools/{school}', [ShoeController::class, 'updateSchool'])->name('school.update');
         Route::delete('/schools/{school}', [ShoeController::class, 'destroySchool'])->name('school.destroy');
     });

@@ -233,6 +233,20 @@ const deleteSchool = (schoolId, schoolName) => {
   }
 };
 
+const isSyncing = ref(false);
+
+const syncAllFromStorage = () => {
+  if (confirm('Sinkronkan ulang seluruh data sepatu dari berkas Excel yang ada di storage server?\n\nProses ini akan membaca ulang seluruh file Excel asli di storage tanpa menghapus PIC yang sudah ditentukan.')) {
+    isSyncing.value = true;
+    router.post(getUrl('/shoes/sync-storage'), {}, {
+      preserveScroll: true,
+      onFinish: () => {
+        isSyncing.value = false;
+      },
+    });
+  }
+};
+
 // Max size total for progress bar calculation
 const maxMatrixTotal = computed(() => {
   if (!props.sizeMatrix || props.sizeMatrix.length === 0) return 1;
@@ -812,9 +826,23 @@ const excelExportUrl = computed(() => {
 
         <!-- Import Batches History -->
         <div class="mt-8">
-          <h2 class="text-base font-bold text-slate-900 dark:text-white mb-3">
-            Riwayat Berkas File yang Di-Import
-          </h2>
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+            <div>
+              <h2 class="text-base font-bold text-slate-900 dark:text-white">
+                Riwayat Berkas File yang Di-Import
+              </h2>
+              <p class="text-xs text-slate-500">Berkas Excel asli tersimpan aman di server storage dan siap disinkronkan kapan saja.</p>
+            </div>
+            <button
+              @click="syncAllFromStorage"
+              :disabled="isSyncing"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+              title="Baca ulang semua berkas Excel di storage dan perbarui data jika ada perubahan logika/fitur"
+            >
+              <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isSyncing }" />
+              {{ isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Ulang dari Storage' }}
+            </button>
+          </div>
           <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <table class="w-full text-left text-sm">
               <thead class="bg-slate-50 dark:bg-slate-800/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">

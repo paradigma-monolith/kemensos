@@ -382,4 +382,72 @@ class ShoeController extends Controller
 
         return redirect()->back()->with('success', "Informasi sekolah {$school->nama_sekolah} berhasil diperbarui.");
     }
+
+    /**
+     * Re-synchronize all Excel files in storage into database.
+     */
+    public function syncStorage(Request $request)
+    {
+        $batches = ShoeImportBatch::with('school')->get();
+        $processedCount = 0;
+        $totalShoes = 0;
+        $errors = [];
+
+        if ($batches->isNotEmpty()) {
+            foreach ($batches as $batch) {
+                $filePath = $batch->file_path;
+                if (!file_exists($filePath)) {
+                    $candidates = [
+                        storage_path('app/' . $filePath),
+                        storage_path('app/private/' . $filePath),
+                        storage_path('app/excel_imports/' . basename($filePath)),
+                    ];
+                    foreach ($candidates as $c) {
+                        if (file_exists($c)) {
+                            $filePath = $c;
+                            break;
+                        }
+                    }
+                }
+
+                if (!file_exists($filePath)) {
+                    $errors[] = "Berkas {$batch->file_name} tidak ditemukan di storage.";
+                    continue;
+                }
+
+                try {
+                    $currentPic = $batch->school?->pic_nama;
+                    $summary = $this->importService->import($filePath, $batch->file_name, $batch->imported_by, $currentPic);
+                    $totalShoes += $summary['total_sepatu'];
+                    $processedCount++;
+                } catch (\Throwable $e) {
+                    $errors[] = "Gagal memproses {$batch->file_name}: " . $e->getMessage();
+                }
+            }
+        } else {
+            $files = Storage::disk('local')->files('excel_imports');
+            foreach ($files as $rel) {
+                $full = Storage::disk('local')->path($rel);
+                $orig = basename($rel);
+                try {
+                    $summary = $this->importService->import($full, $orig, auth()->id());
+                    $totalShoes += $summary['total_sepatu'];
+                    $processedCount++;
+                } catch (\Throwable $e) {
+                    $errors[] = "Gagal memproses {$orig}: " . $e->getMessage();
+                }
+            }
+        }
+
+        if ($processedCount === 0 && empty($errors)) {
+            return redirect()->back()->with('error', 'Tidak ada berkas Excel di storage yang dapat disinkronkan.');
+        }
+
+        $msg = "Sinkronisasi selesai: Berhasil memperbarui {$processedCount} berkas sekolah ({$totalShoes} total pasang sepatu).";
+        if (!empty($errors)) {
+            $msg .= " Catatan kendala: " . implode('; ', $errors);
+        }
+
+        return redirect()->route('shoes.index')->with('success', $msg);
+    }
 }
