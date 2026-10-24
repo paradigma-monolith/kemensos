@@ -363,34 +363,33 @@ class ShoeExportService
             $usedSheetTitles[] = 'rekap per sekolah';
 
             // Title
-            $sheetPerSchool->mergeCells('A1:O1');
+            $sheetPerSchool->mergeCells('A1:N1');
             $sheetPerSchool->setCellValue('A1', 'REKAPITULASI KEBUTUHAN PENGADAAN SEPATU PER SEKOLAH');
             $sheetPerSchool->getStyle('A1')->getFont()->setBold(true)->setSize(15)->getColor()->setRGB('1E293B');
             $sheetPerSchool->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-            $sheetPerSchool->mergeCells('A2:O2');
+            $sheetPerSchool->mergeCells('A2:N2');
             $sheetPerSchool->setCellValue('A2', 'KEMENTERIAN SOSIAL RI — TAHUN ' . date('Y'));
             $sheetPerSchool->getStyle('A2')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('475569');
             $sheetPerSchool->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-            // Table 1: Ringkasan Data Setiap Sekolah
+            // Table 1: Ringkasan Data Setiap Sekolah (Tanpa Kolom Kepala Sekolah)
             $sheetPerSchool->setCellValue('A4', 'No');
             $sheetPerSchool->setCellValue('B4', 'Nama Sekolah');
             $sheetPerSchool->setCellValue('C4', 'Kota / Wilayah');
-            $sheetPerSchool->setCellValue('D4', 'Kepala Sekolah');
-            $sheetPerSchool->setCellValue('E4', 'Petugas Ukur / PIC');
-            $sheetPerSchool->setCellValue('F4', 'Siswa (L)');
-            $sheetPerSchool->setCellValue('G4', 'Siswa (P)');
-            $sheetPerSchool->setCellValue('H4', 'Guru & Tendik (L)');
-            $sheetPerSchool->setCellValue('I4', 'Guru & Tendik (P)');
-            $sheetPerSchool->setCellValue('J4', 'Total Siswa');
-            $sheetPerSchool->setCellValue('K4', 'Total Staff');
-            $sheetPerSchool->setCellValue('L4', 'Total Pria');
-            $sheetPerSchool->setCellValue('M4', 'Total Wanita');
-            $sheetPerSchool->setCellValue('N4', 'Ukuran Dominan');
-            $sheetPerSchool->setCellValue('O4', 'TOTAL PASANG');
+            $sheetPerSchool->setCellValue('D4', 'Petugas Ukur / PIC');
+            $sheetPerSchool->setCellValue('E4', 'Siswa (L)');
+            $sheetPerSchool->setCellValue('F4', 'Siswa (P)');
+            $sheetPerSchool->setCellValue('G4', 'Guru & Tendik (L)');
+            $sheetPerSchool->setCellValue('H4', 'Guru & Tendik (P)');
+            $sheetPerSchool->setCellValue('I4', 'Total Siswa');
+            $sheetPerSchool->setCellValue('J4', 'Total Staff');
+            $sheetPerSchool->setCellValue('K4', 'Total Pria');
+            $sheetPerSchool->setCellValue('L4', 'Total Wanita');
+            $sheetPerSchool->setCellValue('M4', 'Ukuran Dominan');
+            $sheetPerSchool->setCellValue('N4', 'TOTAL PASANG');
 
-            $sheetPerSchool->getStyle('A4:O4')->applyFromArray($headerStyleIndigo);
+            $sheetPerSchool->getStyle('A4:N4')->applyFromArray($headerStyleIndigo);
             $sheetPerSchool->getRowDimension(4)->setRowHeight(26);
 
             $tbl1Rows = [];
@@ -426,7 +425,6 @@ class ShoeExportService
                     $noTbl1++,
                     $this->sanitizeCellValue($sch->nama_sekolah),
                     $this->sanitizeCellValue($sch->kota ?? 'Indonesia'),
-                    $this->sanitizeCellValue($sch->kepala_sekolah_nama ?? '-'),
                     $this->sanitizeCellValue($sch->pic_nama ?? '-'),
                     $sL,
                     $sP,
@@ -444,24 +442,24 @@ class ShoeExportService
             $sheetPerSchool->fromArray($tbl1Rows, null, 'A5');
             $endTbl1 = 4 + count($tbl1Rows);
             $sheetPerSchool->getStyle("A5:A{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetPerSchool->getStyle("F5:O{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetPerSchool->getStyle("A5:O{$endTbl1}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $sheetPerSchool->getStyle("E5:N{$endTbl1}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPerSchool->getStyle("A5:N{$endTbl1}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
 
             // Total row Table 1
             $totRowTbl1 = $endTbl1 + 1;
-            $sheetPerSchool->mergeCells("A{$totRowTbl1}:E{$totRowTbl1}");
+            $sheetPerSchool->mergeCells("A{$totRowTbl1}:D{$totRowTbl1}");
             $sheetPerSchool->setCellValue("A{$totRowTbl1}", 'TOTAL KESELURUHAN');
-            $sheetPerSchool->setCellValue("F{$totRowTbl1}", $totSiswaL);
-            $sheetPerSchool->setCellValue("G{$totRowTbl1}", $totSiswaP);
-            $sheetPerSchool->setCellValue("H{$totRowTbl1}", $totStaffL);
-            $sheetPerSchool->setCellValue("I{$totRowTbl1}", $totStaffP);
-            $sheetPerSchool->setCellValue("J{$totRowTbl1}", $totSiswaL + $totSiswaP);
-            $sheetPerSchool->setCellValue("K{$totRowTbl1}", $totStaffL + $totStaffP);
-            $sheetPerSchool->setCellValue("L{$totRowTbl1}", $totPria);
-            $sheetPerSchool->setCellValue("M{$totRowTbl1}", $totWanita);
-            $sheetPerSchool->setCellValue("N{$totRowTbl1}", '-');
-            $sheetPerSchool->setCellValue("O{$totRowTbl1}", $grandTotal);
-            $sheetPerSchool->getStyle("A{$totRowTbl1}:O{$totRowTbl1}")->applyFromArray($totalRowStyle);
+            $sheetPerSchool->setCellValue("E{$totRowTbl1}", $totSiswaL);
+            $sheetPerSchool->setCellValue("F{$totRowTbl1}", $totSiswaP);
+            $sheetPerSchool->setCellValue("G{$totRowTbl1}", $totStaffL);
+            $sheetPerSchool->setCellValue("H{$totRowTbl1}", $totStaffP);
+            $sheetPerSchool->setCellValue("I{$totRowTbl1}", $totSiswaL + $totSiswaP);
+            $sheetPerSchool->setCellValue("J{$totRowTbl1}", $totStaffL + $totStaffP);
+            $sheetPerSchool->setCellValue("K{$totRowTbl1}", $totPria);
+            $sheetPerSchool->setCellValue("L{$totRowTbl1}", $totWanita);
+            $sheetPerSchool->setCellValue("M{$totRowTbl1}", '-');
+            $sheetPerSchool->setCellValue("N{$totRowTbl1}", $grandTotal);
+            $sheetPerSchool->getStyle("A{$totRowTbl1}:N{$totRowTbl1}")->applyFromArray($totalRowStyle);
             $sheetPerSchool->getRowDimension($totRowTbl1)->setRowHeight(24);
 
             // Table 2: Matriks Distribusi Ukuran Sepatu Setiap Sekolah (Cross-tab)
@@ -529,18 +527,17 @@ class ShoeExportService
             $sheetPerSchool->getColumnDimension('A')->setWidth(6);
             $sheetPerSchool->getColumnDimension('B')->setWidth(34);
             $sheetPerSchool->getColumnDimension('C')->setWidth(20);
-            $sheetPerSchool->getColumnDimension('D')->setWidth(24);
-            $sheetPerSchool->getColumnDimension('E')->setWidth(22);
-            $sheetPerSchool->getColumnDimension('F')->setWidth(12);
-            $sheetPerSchool->getColumnDimension('G')->setWidth(12);
-            $sheetPerSchool->getColumnDimension('H')->setWidth(18);
-            $sheetPerSchool->getColumnDimension('I')->setWidth(18);
-            $sheetPerSchool->getColumnDimension('J')->setWidth(14);
-            $sheetPerSchool->getColumnDimension('K')->setWidth(14);
-            $sheetPerSchool->getColumnDimension('L')->setWidth(14);
-            $sheetPerSchool->getColumnDimension('M')->setWidth(14);
-            $sheetPerSchool->getColumnDimension('N')->setWidth(18);
-            $sheetPerSchool->getColumnDimension('O')->setWidth(16);
+            $sheetPerSchool->getColumnDimension('D')->setWidth(22); // Petugas Ukur / PIC
+            $sheetPerSchool->getColumnDimension('E')->setWidth(12); // Siswa (L)
+            $sheetPerSchool->getColumnDimension('F')->setWidth(12); // Siswa (P)
+            $sheetPerSchool->getColumnDimension('G')->setWidth(18); // Guru & Tendik (L)
+            $sheetPerSchool->getColumnDimension('H')->setWidth(18); // Guru & Tendik (P)
+            $sheetPerSchool->getColumnDimension('I')->setWidth(14); // Total Siswa
+            $sheetPerSchool->getColumnDimension('J')->setWidth(14); // Total Staff
+            $sheetPerSchool->getColumnDimension('K')->setWidth(14); // Total Pria
+            $sheetPerSchool->getColumnDimension('L')->setWidth(14); // Total Wanita
+            $sheetPerSchool->getColumnDimension('M')->setWidth(18); // Ukuran Dominan
+            $sheetPerSchool->getColumnDimension('N')->setWidth(16); // TOTAL PASANG
 
             for ($c = 4; $c <= 3 + count($sizes); $c++) {
                 $colLet = $this->getColumnLetter($c);

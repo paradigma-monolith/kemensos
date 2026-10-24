@@ -172,6 +172,9 @@ class ShoeRecapTest extends TestCase
         $this->assertEquals('REKAPITULASI KEBUTUHAN PENGADAAN SEPATU PER SEKOLAH', $rekapPerSchoolSheet->getCell('A1')->getValue());
         $this->assertEquals('SR Cimahi', $rekapPerSchoolSheet->getCell('B5')->getValue());
         $this->assertEquals('SR Rembang', $rekapPerSchoolSheet->getCell('B6')->getValue());
+        // Verify Kepala Sekolah column is removed and replaced with Petugas Ukur / PIC
+        $this->assertNotEquals('Kepala Sekolah', $rekapPerSchoolSheet->getCell('D4')->getValue());
+        $this->assertEquals('Petugas Ukur / PIC', $rekapPerSchoolSheet->getCell('D4')->getValue());
 
         // Check Rekap Ukuran Sepatu sheet: verify Ukuran Top is removed
         $rekapUkuranSheet = $spreadsheet->getSheetByName('Rekap Ukuran Sepatu');
