@@ -445,5 +445,43 @@ class ShoeRecapTest extends TestCase
             'panjang_kaki' => 25.0,
         ]);
     }
+
+    public function test_recipients_tab_preserved_on_pagination_and_query_filters(): void
+    {
+        $user = User::factory()->create();
+
+        // 1. Default request should resolve tab to 'matrix'
+        $response = $this->actingAs($user)->get('/shoes');
+        $response->assertStatus(200);
+        $response->assertInertia(fn ($page) => 
+            $page->component('Shoes/Index')
+                ->where('filters.tab', 'matrix')
+        );
+
+        // 2. Request with page parameter should auto-resolve tab to 'recipients'
+        $pageResponse = $this->actingAs($user)->get('/shoes?page=2');
+        $pageResponse->assertStatus(200);
+        $pageResponse->assertInertia(fn ($page) => 
+            $page->component('Shoes/Index')
+                ->where('filters.tab', 'recipients')
+        );
+
+        // 3. Request with explicit tab parameter should preserve it
+        $recipientsResponse = $this->actingAs($user)->get('/shoes?tab=recipients&page=2');
+        $recipientsResponse->assertStatus(200);
+        $recipientsResponse->assertInertia(fn ($page) => 
+            $page->component('Shoes/Index')
+                ->where('filters.tab', 'recipients')
+        );
+
+        // 4. Request with anomaly filter should resolve tab to 'recipients'
+        $anomalyResponse = $this->actingAs($user)->get('/shoes?anomaly=1');
+        $anomalyResponse->assertStatus(200);
+        $anomalyResponse->assertInertia(fn ($page) => 
+            $page->component('Shoes/Index')
+                ->where('filters.tab', 'recipients')
+        );
+    }
 }
+
 

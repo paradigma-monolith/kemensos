@@ -132,39 +132,38 @@ class ShoeController extends Controller
             ->take(20)
             ->get();
 
+        $tab = $request->input('tab');
+        if (!$tab) {
+            $tab = ($request->has('page') || $onlyAnomaly || $search) ? 'recipients' : 'matrix';
+        }
+
         return Inertia::render('Shoes/Index', [
             'stats' => [
-                'total_schools' => $totalSchools,
-                'total_batches' => $totalBatches,
                 'total_sepatu' => $totalRecipients,
                 'total_siswa' => $totalSiswa,
                 'total_guru' => $totalGuru,
                 'total_tendik' => $totalTendik,
                 'total_pria' => $totalPria,
                 'total_wanita' => $totalWanita,
+                'total_schools' => $totalSchools,
+                'total_batches' => $totalBatches,
                 'total_anomalies' => $totalAnomalies,
                 'extreme_anomalies' => $extremeAnomalies,
             ],
-            'filters' => [
-                'school_id' => $schoolId,
-                'kategori' => $kategori,
-                'gender' => $gender,
-                'pic' => $pic,
-                'search' => $search,
-                'anomaly' => $onlyAnomaly,
-            ],
-            'sizeMatrix' => $sizeMatrix,
-            'recipients' => $recipientQuery,
-            'schools' => $schools,
-            'batches' => $batches,
-            'picList' => $allPics,
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,
                 'kategori' => $kategori,
                 'gender' => $gender,
                 'pic' => $pic,
                 'search' => $search,
+                'anomaly' => $onlyAnomaly,
+                'tab' => $tab,
             ],
+            'sizeMatrix' => $sizeMatrix,
+            'recipients' => $recipientQuery,
+            'schools' => $schools,
+            'batches' => $batches,
+            'picList' => $allPics,
         ]);
     }
 

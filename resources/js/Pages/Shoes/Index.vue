@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
 import {
@@ -73,14 +73,80 @@ const props = defineProps({
       gender: '',
       pic: '',
       search: '',
+      anomaly: false,
+      tab: 'matrix',
     }),
   },
 });
 
 const page = usePage();
 
-// Active tabs: 'matrix' | 'recipients' | 'schools' | 'batches'
-const activeTab = ref('matrix');
+// Intelligent active tab detection (matrix | recipients | batches)
+const getInitialTab = () => {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab');
+    if (urlTab && ['matrix', 'recipients', 'batches'].includes(urlTab)) {
+      return urlTab;
+    }
+    if (params.has('page') || params.get('anomaly') || params.get('search')) {
+      return 'recipients';
+    }
+  }
+  if (props.filters?.tab && ['matrix', 'recipients', 'batches'].includes(props.filters.tab)) {
+    return props.filters.tab;
+  }
+  if (props.filters?.anomaly || props.filters?.search) {
+    return 'recipients';
+  }
+  return 'matrix';
+};
+
+const activeTab = ref(getInitialTab());
+
+watch(
+  () => props.filters?.tab,
+  (newTab) => {
+    if (newTab && ['matrix', 'recipients', 'batches'].includes(newTab)) {
+      activeTab.value = newTab;
+    }
+  }
+);
+
+const switchTab = (tab) => {
+  activeTab.value = tab;
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {
+      // ignore
+    }
+  }
+};
+
+const goToPage = (targetUrl) => {
+  if (!targetUrl) return;
+  try {
+    const urlObj = new URL(targetUrl, window.location.origin);
+    urlObj.searchParams.set('tab', 'recipients');
+    if (onlyAnomaly.value) {
+      urlObj.searchParams.set('anomaly', '1');
+    }
+    router.get(urlObj.pathname + urlObj.search, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  } catch (e) {
+    router.get(targetUrl, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  }
+};
 
 // Search & Filter local states
 const search = ref(props.filters.search || '');
@@ -173,6 +239,7 @@ const applyFilters = () => {
     pic: selectedPic.value || undefined,
     search: search.value || undefined,
     anomaly: onlyAnomaly.value ? 1 : undefined,
+    tab: activeTab.value,
   }, {
     preserveState: true,
     preserveScroll: true,
@@ -633,7 +700,7 @@ const excelExportUrl = computed(() => {
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800">
         <div class="flex items-center gap-2">
           <button
-            @click="activeTab = 'matrix'"
+            @click="switchTab('matrix')"
             class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
             :class="activeTab === 'matrix' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
           >
@@ -645,7 +712,7 @@ const excelExportUrl = computed(() => {
           </button>
 
           <button
-            @click="activeTab = 'recipients'"
+            @click="switchTab('recipients')"
             class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
             :class="activeTab === 'recipients' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
           >
@@ -657,7 +724,7 @@ const excelExportUrl = computed(() => {
           </button>
 
           <button
-            @click="activeTab = 'batches'"
+            @click="switchTab('batches')"
             class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
             :class="activeTab === 'batches' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
           >
@@ -908,13 +975,14 @@ const excelExportUrl = computed(() => {
           </div>
           <div class="flex items-center gap-1">
             <template v-for="(link, lIdx) in recipients.links" :key="lIdx">
-              <a
+              <button
                 v-if="link.url"
-                :href="link.url"
-                class="px-3 py-1.5 rounded-lg border font-medium transition-colors"
+                type="button"
+                @click="goToPage(link.url)"
+                class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer"
                 :class="link.active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
                 v-html="link.label"
-              ></a>
+              ></button>
               <span v-else class="px-2 py-1.5 text-slate-400" v-html="link.label"></span>
             </template>
           </div>
