@@ -181,7 +181,18 @@ const selectedSchool = ref(props.filters.school_id || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
 const selectedPic = ref(props.filters.pic || '');
+const selectedJenjang = ref(props.filters.jenjang || '');
 const onlyAnomaly = ref(Boolean(props.filters.anomaly));
+const matrixViewMode = ref('jenjang'); // 'jenjang' (SRD, SRMP, SRMA) | 'kategori'
+
+const filterByJenjang = (jCode) => {
+  if (selectedJenjang.value === jCode) {
+    selectedJenjang.value = '';
+  } else {
+    selectedJenjang.value = jCode;
+  }
+  applyFilters();
+};
 
 // Upload Modal state (Multi-File & PIC Support)
 const isUploadModalOpen = ref(false);
@@ -264,6 +275,7 @@ const applyFilters = () => {
     kategori: selectedKategori.value || undefined,
     gender: selectedGender.value || undefined,
     pic: selectedPic.value || undefined,
+    jenjang: selectedJenjang.value || undefined,
     search: search.value || undefined,
     anomaly: onlyAnomaly.value ? 1 : undefined,
     tab: activeTab.value,
@@ -286,6 +298,7 @@ const resetFilters = () => {
   selectedKategori.value = '';
   selectedGender.value = '';
   selectedPic.value = '';
+  selectedJenjang.value = '';
   onlyAnomaly.value = false;
   applyFilters();
 };
@@ -409,6 +422,7 @@ const activeSchoolObj = computed(() => {
 const excelExportUrl = computed(() => {
   const params = new URLSearchParams();
   if (selectedSchool.value) params.append('school_id', selectedSchool.value);
+  if (selectedJenjang.value) params.append('jenjang', selectedJenjang.value);
   return getUrl(`/shoes/export/excel?${params.toString()}`);
 });
 </script>
@@ -543,6 +557,161 @@ const excelExportUrl = computed(() => {
         </div>
       </div>
 
+      <!-- Rekapitulasi Berdasarkan Nama Sheet (SRD, SRMP, SRMA) -->
+      <div v-if="stats.sheet_stats" class="space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
+              <Layers class="w-3.5 h-3.5" />
+            </span>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+              Rekapitulasi Kebutuhan Sepatu Berdasarkan Jenjang (Nama Sheet)
+            </h3>
+            <span class="text-[11px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline">
+              (SRD • SRMP • SRMA)
+            </span>
+          </div>
+          <span v-if="selectedJenjang" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 w-fit">
+            Filter Jenjang Aktif: <span class="font-bold uppercase">{{ selectedJenjang }}</span>
+            <button @click="filterByJenjang('')" class="hover:text-rose-600 ml-0.5 cursor-pointer" title="Hapus filter jenjang">✕</button>
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <!-- Card SRD (Sekolah Dasar) -->
+          <div
+            @click="filterByJenjang('SRD')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md"
+            :class="selectedJenjang === 'SRD'
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-500/30'
+              : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-emerald-300 dark:hover:border-emerald-700'"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  SRD
+                </span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Sekolah Dasar</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">Sheet *SRD*</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <div class="text-2xl font-black text-slate-900 dark:text-white">
+                {{ stats.sheet_stats.srd?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srd?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
+              </span>
+            </div>
+            <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="text-blue-600 dark:text-blue-400 font-medium">{{ stats.sheet_stats.srd?.pria || 0 }} Laki-laki</span>
+              <span>•</span>
+              <span class="text-pink-600 dark:text-pink-400 font-medium">{{ stats.sheet_stats.srd?.wanita || 0 }} Perempuan</span>
+            </div>
+          </div>
+
+          <!-- Card SRMP (Menengah Pertama) -->
+          <div
+            @click="filterByJenjang('SRMP')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md"
+            :class="selectedJenjang === 'SRMP'
+              ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/30'
+              : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-blue-300 dark:hover:border-blue-700'"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  SRMP
+                </span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Menengah Pertama</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">Sheet *SRMP*</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <div class="text-2xl font-black text-slate-900 dark:text-white">
+                {{ stats.sheet_stats.srmp?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <span class="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono">
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srmp?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
+              </span>
+            </div>
+            <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="text-blue-600 dark:text-blue-400 font-medium">{{ stats.sheet_stats.srmp?.pria || 0 }} Laki-laki</span>
+              <span>•</span>
+              <span class="text-pink-600 dark:text-pink-400 font-medium">{{ stats.sheet_stats.srmp?.wanita || 0 }} Perempuan</span>
+            </div>
+          </div>
+
+          <!-- Card SRMA (Menengah Atas) -->
+          <div
+            @click="filterByJenjang('SRMA')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md"
+            :class="selectedJenjang === 'SRMA'
+              ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-400 dark:border-purple-600 ring-2 ring-purple-500/30'
+              : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-purple-300 dark:hover:border-purple-700'"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  SRMA
+                </span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Menengah Atas</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">Sheet *SRMA*</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <div class="text-2xl font-black text-slate-900 dark:text-white">
+                {{ stats.sheet_stats.srma?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <span class="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono">
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srma?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
+              </span>
+            </div>
+            <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="text-blue-600 dark:text-blue-400 font-medium">{{ stats.sheet_stats.srma?.pria || 0 }} Laki-laki</span>
+              <span>•</span>
+              <span class="text-pink-600 dark:text-pink-400 font-medium">{{ stats.sheet_stats.srma?.wanita || 0 }} Perempuan</span>
+            </div>
+          </div>
+
+          <!-- Card Guru & Tendik (Staff) -->
+          <div
+            @click="filterByJenjang('STAFF')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md"
+            :class="selectedJenjang === 'STAFF'
+              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/30'
+              : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-amber-300 dark:hover:border-amber-700'"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  STAFF
+                </span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Guru & Tendik</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">Sheet Staff</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <div class="text-2xl font-black text-slate-900 dark:text-white">
+                {{ stats.sheet_stats.staff?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <span class="text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
+                Staff Pengajar
+              </span>
+            </div>
+            <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="text-blue-600 dark:text-blue-400 font-medium">{{ stats.sheet_stats.staff?.pria || 0 }} Laki-laki</span>
+              <span>•</span>
+              <span class="text-pink-600 dark:text-pink-400 font-medium">{{ stats.sheet_stats.staff?.wanita || 0 }} Perempuan</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Filter & School Context Bar -->
       <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-sm space-y-4">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -562,6 +731,25 @@ const excelExportUrl = computed(() => {
                 <option v-for="sc in schools" :key="sc.id" :value="sc.id">
                   {{ sc.nama_sekolah }} ({{ sc.recipients_count }} pasang)
                 </option>
+              </select>
+            </div>
+
+            <!-- Jenjang / Sheet Selector -->
+            <div class="flex items-center gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Layers class="w-3.5 h-3.5 text-indigo-500" />
+                Jenjang (Sheet):
+              </label>
+              <select
+                v-model="selectedJenjang"
+                @change="applyFilters"
+                class="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="">Semua Jenjang / Sheet</option>
+                <option value="SRD">🏫 SRD (Sekolah Rakyat Dasar)</option>
+                <option value="SRMP">🏫 SRMP (Sekolah Rakyat Menengah Pertama)</option>
+                <option value="SRMA">🏫 SRMA (Sekolah Rakyat Menengah Atas)</option>
+                <option value="STAFF">👥 Guru & Tendik (Staff)</option>
               </select>
             </div>
 
@@ -777,11 +965,52 @@ const excelExportUrl = computed(() => {
       </div>
 
       <!-- TAB 1: REKAPITULASI UKURAN SEPATU (VENDOR MATRIX) -->
-      <div v-if="activeTab === 'matrix'" class="space-y-6">
+      <div v-if="activeTab === 'matrix'" class="space-y-4">
+        <!-- Matrix View Mode Switcher -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Format Kolom Matriks:</span>
+            <div class="inline-flex p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold shadow-xs">
+              <button
+                type="button"
+                @click="matrixViewMode = 'jenjang'"
+                class="px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+                :class="matrixViewMode === 'jenjang' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+              >
+                <Layers class="w-3.5 h-3.5" />
+                <span>Rincian Jenjang Sheet (SRD • SRMP • SRMA)</span>
+              </button>
+              <button
+                type="button"
+                @click="matrixViewMode = 'kategori'"
+                class="px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+                :class="matrixViewMode === 'kategori' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+              >
+                <Users class="w-3.5 h-3.5" />
+                <span>Kategori Standar (Siswa • Guru • Tendik)</span>
+              </button>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            {{ matrixViewMode === 'jenjang' ? '📊 Data dipisahkan per sheet SRD (SD), SRMP (SMP), SRMA (SMA), dan Staff' : '📊 Data dipisahkan per kategori umum Siswa, Guru, dan Tendik' }}
+          </span>
+        </div>
+
         <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 dark:bg-slate-800/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
-              <tr>
+              <tr v-if="matrixViewMode === 'jenjang'">
+                <th class="py-3.5 px-4 text-center">Ukuran Sepatu</th>
+                <th class="py-3.5 px-4 text-center">Distribusi Kebutuhan</th>
+                <th class="py-3.5 px-4 text-center text-emerald-700 dark:text-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20">SRD (L / P)</th>
+                <th class="py-3.5 px-4 text-center text-blue-700 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20">SRMP (L / P)</th>
+                <th class="py-3.5 px-4 text-center text-purple-700 dark:text-purple-400 bg-purple-50/40 dark:bg-purple-950/20">SRMA (L / P)</th>
+                <th class="py-3.5 px-4 text-center text-amber-700 dark:text-amber-400 bg-amber-50/40 dark:bg-amber-950/20">Guru/Tendik (L / P)</th>
+                <th class="py-3.5 px-4 text-center">Total Pria</th>
+                <th class="py-3.5 px-4 text-center">Total Wanita</th>
+                <th class="py-3.5 px-4 text-center bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300">Total Pasang</th>
+              </tr>
+              <tr v-else>
                 <th class="py-3.5 px-4 text-center">Ukuran Sepatu</th>
                 <th class="py-3.5 px-4 text-center">Distribusi Kebutuhan</th>
                 <th class="py-3.5 px-4 text-center">Siswa (L / P)</th>
@@ -820,26 +1049,60 @@ const excelExportUrl = computed(() => {
                   </div>
                 </td>
 
-                <!-- Siswa L/P -->
-                <td class="py-3 px-4 text-center">
-                  <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.siswa_l }}</span>
-                  <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
-                  <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.siswa_p }}</span>
-                </td>
+                <!-- JENJANG VIEW CELLS -->
+                <template v-if="matrixViewMode === 'jenjang'">
+                  <!-- SRD L/P -->
+                  <td class="py-3 px-4 text-center bg-emerald-50/20 dark:bg-emerald-950/10">
+                    <span :class="item.srd_l > 0 ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-400'">{{ item.srd_l || 0 }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span :class="item.srd_p > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : 'text-slate-400'">{{ item.srd_p || 0 }}</span>
+                  </td>
 
-                <!-- Guru L/P -->
-                <td class="py-3 px-4 text-center">
-                  <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.guru_l }}</span>
-                  <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
-                  <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.guru_p }}</span>
-                </td>
+                  <!-- SRMP L/P -->
+                  <td class="py-3 px-4 text-center bg-blue-50/20 dark:bg-blue-950/10">
+                    <span :class="item.srmp_l > 0 ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-400'">{{ item.srmp_l || 0 }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span :class="item.srmp_p > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : 'text-slate-400'">{{ item.srmp_p || 0 }}</span>
+                  </td>
 
-                <!-- Tendik L/P -->
-                <td class="py-3 px-4 text-center">
-                  <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.tendik_l }}</span>
-                  <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
-                  <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.tendik_p }}</span>
-                </td>
+                  <!-- SRMA L/P -->
+                  <td class="py-3 px-4 text-center bg-purple-50/20 dark:bg-purple-950/10">
+                    <span :class="item.srma_l > 0 ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-400'">{{ item.srma_l || 0 }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span :class="item.srma_p > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : 'text-slate-400'">{{ item.srma_p || 0 }}</span>
+                  </td>
+
+                  <!-- Staff L/P -->
+                  <td class="py-3 px-4 text-center bg-amber-50/20 dark:bg-amber-950/10">
+                    <span :class="(item.staff_l ?? (item.guru_l + item.tendik_l)) > 0 ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-400'">{{ item.staff_l ?? (item.guru_l + item.tendik_l) }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span :class="(item.staff_p ?? (item.guru_p + item.tendik_p)) > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : 'text-slate-400'">{{ item.staff_p ?? (item.guru_p + item.tendik_p) }}</span>
+                  </td>
+                </template>
+
+                <!-- KATEGORI VIEW CELLS -->
+                <template v-else>
+                  <!-- Siswa L/P -->
+                  <td class="py-3 px-4 text-center">
+                    <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.siswa_l }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.siswa_p }}</span>
+                  </td>
+
+                  <!-- Guru L/P -->
+                  <td class="py-3 px-4 text-center">
+                    <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.guru_l }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.guru_p }}</span>
+                  </td>
+
+                  <!-- Tendik L/P -->
+                  <td class="py-3 px-4 text-center">
+                    <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.tendik_l }}</span>
+                    <span class="text-slate-300 dark:text-slate-600 mx-1">/</span>
+                    <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ item.tendik_p }}</span>
+                  </td>
+                </template>
 
                 <!-- Total Pria -->
                 <td class="py-3 px-4 text-center text-blue-700 dark:text-blue-300 font-semibold">
@@ -858,7 +1121,7 @@ const excelExportUrl = computed(() => {
               </tr>
 
               <tr v-if="sizeMatrix.length === 0">
-                <td colspan="8" class="py-8 text-center text-slate-500 font-sans">
+                <td :colspan="matrixViewMode === 'jenjang' ? 9 : 8" class="py-8 text-center text-slate-500 font-sans">
                   Belum ada data ukuran sepatu yang di-import.
                 </td>
               </tr>
@@ -866,7 +1129,32 @@ const excelExportUrl = computed(() => {
 
             <!-- Table Footer Total -->
             <tfoot v-if="sizeMatrix.length > 0" class="bg-slate-100/80 dark:bg-slate-800/90 font-mono text-xs font-bold border-t-2 border-slate-300 dark:border-slate-700">
-              <tr>
+              <tr v-if="matrixViewMode === 'jenjang'">
+                <td class="py-3.5 px-4 text-center uppercase tracking-wider font-sans">TOTAL</td>
+                <td class="py-3.5 px-4 text-center font-sans text-slate-500">{{ sizeMatrix.length }} Variasi Ukuran</td>
+                <td class="py-3.5 px-4 text-center text-emerald-700 dark:text-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20">
+                  {{ stats.sheet_stats?.srd?.pria || 0 }} / {{ stats.sheet_stats?.srd?.wanita || 0 }}
+                  <span class="block text-[10px] text-slate-400 font-normal">({{ stats.sheet_stats?.srd?.total || 0 }} psg)</span>
+                </td>
+                <td class="py-3.5 px-4 text-center text-blue-700 dark:text-blue-300 bg-blue-50/40 dark:bg-blue-950/20">
+                  {{ stats.sheet_stats?.srmp?.pria || 0 }} / {{ stats.sheet_stats?.srmp?.wanita || 0 }}
+                  <span class="block text-[10px] text-slate-400 font-normal">({{ stats.sheet_stats?.srmp?.total || 0 }} psg)</span>
+                </td>
+                <td class="py-3.5 px-4 text-center text-purple-700 dark:text-purple-300 bg-purple-50/40 dark:bg-purple-950/20">
+                  {{ stats.sheet_stats?.srma?.pria || 0 }} / {{ stats.sheet_stats?.srma?.wanita || 0 }}
+                  <span class="block text-[10px] text-slate-400 font-normal">({{ stats.sheet_stats?.srma?.total || 0 }} psg)</span>
+                </td>
+                <td class="py-3.5 px-4 text-center text-amber-700 dark:text-amber-300 bg-amber-50/40 dark:bg-amber-950/20">
+                  {{ stats.sheet_stats?.staff?.pria || 0 }} / {{ stats.sheet_stats?.staff?.wanita || 0 }}
+                  <span class="block text-[10px] text-slate-400 font-normal">({{ stats.sheet_stats?.staff?.total || 0 }} psg)</span>
+                </td>
+                <td class="py-3.5 px-4 text-center text-blue-700 dark:text-blue-300">{{ stats.total_pria }}</td>
+                <td class="py-3.5 px-4 text-center text-pink-700 dark:text-pink-300">{{ stats.total_wanita }}</td>
+                <td class="py-3.5 px-4 text-center text-lg text-indigo-600 dark:text-indigo-400 bg-indigo-100/50 dark:bg-indigo-950/40">
+                  {{ stats.total_sepatu }}
+                </td>
+              </tr>
+              <tr v-else>
                 <td class="py-3.5 px-4 text-center uppercase tracking-wider font-sans">TOTAL</td>
                 <td class="py-3.5 px-4 text-center font-sans text-slate-500">{{ sizeMatrix.length }} Variasi Ukuran</td>
                 <td class="py-3.5 px-4 text-center text-indigo-700 dark:text-indigo-300">{{ stats.total_siswa }}</td>
@@ -892,6 +1180,7 @@ const excelExportUrl = computed(() => {
                 <th class="py-3.5 px-4 text-center w-12">No</th>
                 <th class="py-3.5 px-4">Nama Lengkap</th>
                 <th class="py-3.5 px-4">Sekolah</th>
+                <th class="py-3.5 px-4 text-center">Jenjang (Sheet)</th>
                 <th class="py-3.5 px-4 text-center">Gender</th>
                 <th class="py-3.5 px-4">Jabatan / Kategori</th>
                 <th class="py-3.5 px-4 text-center">Panjang Kaki</th>
@@ -916,6 +1205,28 @@ const excelExportUrl = computed(() => {
                   <div class="font-medium text-slate-900 dark:text-slate-100">{{ rec.school?.nama_sekolah || '-' }}</div>
                   <div v-if="rec.school?.pic_nama" class="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                     <UserCheck class="w-3 h-3 text-indigo-500" /> PIC: {{ rec.school.pic_nama }}
+                  </div>
+                </td>
+                <td class="py-3 px-4 text-center">
+                  <div class="flex flex-col items-center gap-0.5">
+                    <span
+                      class="px-2 py-0.5 rounded-md font-bold text-[11px] border"
+                      :class="{
+                        'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800': rec.jenjang === 'SRD',
+                        'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800': rec.jenjang === 'SRMP',
+                        'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800': rec.jenjang === 'SRMA',
+                        'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800': rec.jenjang === 'GURU' || rec.jenjang === 'TENDIK' || rec.jenjang === 'STAFF',
+                      }"
+                    >
+                      {{ rec.jenjang || '-' }}
+                    </span>
+                    <span
+                      v-if="rec.sheet_source"
+                      class="text-[10px] text-slate-400 font-mono truncate max-w-[120px] cursor-help"
+                      :title="`Nama Sheet Asal: ${rec.sheet_source}`"
+                    >
+                      {{ rec.sheet_source }}
+                    </span>
                   </div>
                 </td>
                 <td class="py-3 px-4 text-center">
@@ -979,7 +1290,7 @@ const excelExportUrl = computed(() => {
               </tr>
 
               <tr v-if="recipients.data.length === 0">
-                <td colspan="8" class="py-8 text-center text-slate-500">
+                <td colspan="9" class="py-8 text-center text-slate-500">
                   <div class="flex flex-col items-center justify-center gap-1.5">
                     <span v-if="onlyAnomaly" class="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <CheckCircle2 class="w-4 h-4" />
@@ -1016,7 +1327,7 @@ const excelExportUrl = computed(() => {
         </div>
       </div>
 
-      <!-- TAB 3: RIWAYAT BERKAS FILE IMPORT -->
+      <!-- TAB 3: RIWAYAT BERKAS FILE IMPORT --> 
       <div v-if="activeTab === 'batches'" class="space-y-6">
         <div>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">

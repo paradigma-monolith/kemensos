@@ -91,7 +91,7 @@ class ShoeExportService
 
         // Fetch recipients with only necessary fields to minimize Eloquent hydration overhead
         $allRecipientsQuery = ShoeRecipient::query()
-            ->select(['id', 'school_id', 'nomor_urut', 'nama_lengkap', 'jenis_kelamin', 'jabatan', 'kategori', 'panjang_kaki', 'ukuran_sepatu'])
+            ->select(['id', 'school_id', 'nomor_urut', 'nama_lengkap', 'jenis_kelamin', 'jabatan', 'kategori', 'panjang_kaki', 'ukuran_sepatu', 'sheet_source'])
             ->orderBy('school_id')
             ->orderBy('kategori')
             ->orderBy('nomor_urut');
@@ -105,6 +105,12 @@ class ShoeExportService
         $statsBySize = [];
         $statsBySchool = [];
         $recipientsBySchool = [];
+        $statsByJenjang = [
+            'SRD' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
+            'SRMP' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
+            'SRMA' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
+            'STAFF' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
+        ];
 
         foreach ($allRecipients as $r) {
             $sz = (int)$r->ukuran_sepatu;
@@ -112,6 +118,30 @@ class ShoeExportService
             $isL = ($r->jenis_kelamin === 'L');
             $isSiswa = ($r->kategori === 'siswa');
             $isStaff = in_array($r->kategori, ['guru', 'tendik'], true);
+
+            // Level tracking based on sheet name containing SRD, SRMP, SRMA
+            $sheetUpper = strtoupper((string)($r->sheet_source ?? ''));
+            $jenjangCode = 'STAFF';
+            if (str_contains($sheetUpper, 'SRD')) {
+                $jenjangCode = 'SRD';
+            } elseif (str_contains($sheetUpper, 'SRMP')) {
+                $jenjangCode = 'SRMP';
+            } elseif (str_contains($sheetUpper, 'SRMA')) {
+                $jenjangCode = 'SRMA';
+            }
+
+            if (!isset($statsByJenjang[$jenjangCode]['sizes'][$sz])) {
+                $statsByJenjang[$jenjangCode]['sizes'][$sz] = ['l' => 0, 'p' => 0, 'total' => 0];
+            }
+            if ($isL) {
+                $statsByJenjang[$jenjangCode]['pria']++;
+                $statsByJenjang[$jenjangCode]['sizes'][$sz]['l']++;
+            } else {
+                $statsByJenjang[$jenjangCode]['wanita']++;
+                $statsByJenjang[$jenjangCode]['sizes'][$sz]['p']++;
+            }
+            $statsByJenjang[$jenjangCode]['total']++;
+            $statsByJenjang[$jenjangCode]['sizes'][$sz]['total']++;
 
             if (!isset($statsBySize[$sz])) {
                 $statsBySize[$sz] = [
@@ -536,6 +566,118 @@ class ShoeExportService
         }
 
         // ====================================================
+        // SHEET TAMBAHAN: REKAPITULASI BERDASARKAN JENJANG (SRD, SRMP, SRMA)
+        // ====================================================
+        $sheetJenjang = $spreadsheet->createSheet();
+        $sheetJenjang->setTitle('Rekap Jenjang SR');
+        $sheetJenjang->setShowGridlines(true);
+        $usedSheetTitles[] = 'rekap jenjang sr';
+
+        $sheetJenjang->mergeCells('A1:Q1');
+        $sheetJenjang->setCellValue('A1', 'REKAPITULASI KEBUTUHAN PENGADAAN SEPATU BERDASARKAN JENJANG SEKOLAH');
+        $sheetJenjang->getStyle('A1')->getFont()->setBold(true)->setSize(14)->getColor()->setRGB('1E293B');
+        $sheetJenjang->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $sheetJenjang->mergeCells('A2:Q2');
+        $sheetJenjang->setCellValue('A2', 'JENJANG SHEET: SRD (SD), SRMP (SMP), SRMA (SMA) & GURU/TENDIK — ' . $scopeName);
+        $sheetJenjang->getStyle('A2')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('475569');
+        $sheetJenjang->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        // Header Row
+        $jHeaders = [
+            'No', 'Ukuran Sepatu',
+            'SRD (L)', 'SRD (P)', 'Total SRD',
+            'SRMP (L)', 'SRMP (P)', 'Total SRMP',
+            'SRMA (L)', 'SRMA (P)', 'Total SRMA',
+            'Guru/Tendik (L)', 'Guru/Tendik (P)', 'Total Staff',
+            'Total Pria', 'Total Wanita', 'TOTAL PASANG'
+        ];
+        $sheetJenjang->fromArray([$jHeaders], null, 'A4');
+        $sheetJenjang->getStyle('A4:Q4')->applyFromArray($headerStyleIndigo);
+        $sheetJenjang->getRowDimension(4)->setRowHeight(26);
+
+        $jRows = [];
+        $noJ = 1;
+        $totSrdL = 0; $totSrdP = 0; $totSrdAll = 0;
+        $totSrmpL = 0; $totSrmpP = 0; $totSrmpAll = 0;
+        $totSrmaL = 0; $totSrmaP = 0; $totSrmaAll = 0;
+        $totStaffJ_L = 0; $totStaffJ_P = 0; $totStaffJ_All = 0;
+
+        foreach ($sizes as $s) {
+            $srdSz = $statsByJenjang['SRD']['sizes'][$s] ?? ['l' => 0, 'p' => 0, 'total' => 0];
+            $srmpSz = $statsByJenjang['SRMP']['sizes'][$s] ?? ['l' => 0, 'p' => 0, 'total' => 0];
+            $srmaSz = $statsByJenjang['SRMA']['sizes'][$s] ?? ['l' => 0, 'p' => 0, 'total' => 0];
+            $staffSz = $statsByJenjang['STAFF']['sizes'][$s] ?? ['l' => 0, 'p' => 0, 'total' => 0];
+
+            $rowTotalPria = $srdSz['l'] + $srmpSz['l'] + $srmaSz['l'] + $staffSz['l'];
+            $rowTotalWanita = $srdSz['p'] + $srmpSz['p'] + $srmaSz['p'] + $staffSz['p'];
+            $rowTotalAll = $rowTotalPria + $rowTotalWanita;
+
+            if ($rowTotalAll === 0 && ($s < 26 || $s > 46)) {
+                continue;
+            }
+
+            $jRows[] = [
+                $noJ++,
+                $s,
+                $srdSz['l'], $srdSz['p'], $srdSz['total'],
+                $srmpSz['l'], $srmpSz['p'], $srmpSz['total'],
+                $srmaSz['l'], $srmaSz['p'], $srmaSz['total'],
+                $staffSz['l'], $staffSz['p'], $staffSz['total'],
+                $rowTotalPria, $rowTotalWanita, $rowTotalAll,
+            ];
+
+            $totSrdL += $srdSz['l']; $totSrdP += $srdSz['p']; $totSrdAll += $srdSz['total'];
+            $totSrmpL += $srmpSz['l']; $totSrmpP += $srmpSz['p']; $totSrmpAll += $srmpSz['total'];
+            $totSrmaL += $srmaSz['l']; $totSrmaP += $srmaSz['p']; $totSrmaAll += $srmaSz['total'];
+            $totStaffJ_L += $staffSz['l']; $totStaffJ_P += $staffSz['p']; $totStaffJ_All += $staffSz['total'];
+        }
+
+        $jStartRow = 5;
+        if (!empty($jRows)) {
+            $sheetJenjang->fromArray($jRows, null, "A{$jStartRow}");
+            $jEndRow = $jStartRow + count($jRows) - 1;
+            $sheetJenjang->getStyle("A{$jStartRow}:Q{$jEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetJenjang->getStyle("A{$jStartRow}:Q{$jEndRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $jTotRow = $jEndRow + 1;
+        } else {
+            $jTotRow = $jStartRow;
+        }
+
+        // Total Row
+        $sheetJenjang->mergeCells("A{$jTotRow}:B{$jTotRow}");
+        $sheetJenjang->setCellValue("A{$jTotRow}", 'TOTAL KESELURUHAN');
+        $sheetJenjang->setCellValue("C{$jTotRow}", $totSrdL);
+        $sheetJenjang->setCellValue("D{$jTotRow}", $totSrdP);
+        $sheetJenjang->setCellValue("E{$jTotRow}", $totSrdAll);
+        $sheetJenjang->setCellValue("F{$jTotRow}", $totSrmpL);
+        $sheetJenjang->setCellValue("G{$jTotRow}", $totSrmpP);
+        $sheetJenjang->setCellValue("H{$jTotRow}", $totSrmpAll);
+        $sheetJenjang->setCellValue("I{$jTotRow}", $totSrmaL);
+        $sheetJenjang->setCellValue("J{$jTotRow}", $totSrmaP);
+        $sheetJenjang->setCellValue("K{$jTotRow}", $totSrmaAll);
+        $sheetJenjang->setCellValue("L{$jTotRow}", $totStaffJ_L);
+        $sheetJenjang->setCellValue("M{$jTotRow}", $totStaffJ_P);
+        $sheetJenjang->setCellValue("N{$jTotRow}", $totStaffJ_All);
+        $sheetJenjang->setCellValue("O{$jTotRow}", $totPria);
+        $sheetJenjang->setCellValue("P{$jTotRow}", $totWanita);
+        $sheetJenjang->setCellValue("Q{$jTotRow}", $grandTotal);
+        $sheetJenjang->getStyle("A{$jTotRow}:Q{$jTotRow}")->applyFromArray($totalRowStyle);
+        $sheetJenjang->getRowDimension($jTotRow)->setRowHeight(24);
+
+        $jColWidths = [
+            'A' => 6, 'B' => 14,
+            'C' => 10, 'D' => 10, 'E' => 12,
+            'F' => 10, 'G' => 10, 'H' => 12,
+            'I' => 10, 'J' => 10, 'K' => 12,
+            'L' => 14, 'M' => 14, 'N' => 14,
+            'O' => 12, 'P' => 12, 'Q' => 16,
+        ];
+        foreach ($jColWidths as $col => $w) {
+            $sheetJenjang->getColumnDimension($col)->setWidth($w);
+        }
+
+        // ====================================================
         // DEDICATED SHEETS FOR EACH SCHOOL (INDIVIDUAL DATA)
         // ====================================================
         // Generate separate sheets for up to 30 schools if total records are within safe memory limits
@@ -721,8 +863,9 @@ class ShoeExportService
         $sheetMaster->setCellValue('F1', 'Kategori');
         $sheetMaster->setCellValue('G1', 'Panjang Kaki (cm)');
         $sheetMaster->setCellValue('H1', 'Ukuran Sepatu');
+        $sheetMaster->setCellValue('I1', 'Jenjang / Sheet Asal');
 
-        $sheetMaster->getStyle('A1:H1')->applyFromArray($headerStyleEmerald);
+        $sheetMaster->getStyle('A1:I1')->applyFromArray($headerStyleEmerald);
         $sheetMaster->getRowDimension(1)->setRowHeight(24);
 
         $recRows = [];
@@ -738,6 +881,7 @@ class ShoeExportService
                 ucfirst($r->kategori),
                 $r->panjang_kaki ?? '-',
                 $r->ukuran_sepatu,
+                $this->sanitizeCellValue($r->sheet_source ?? '-'),
             ];
         }
 
@@ -746,13 +890,13 @@ class ShoeExportService
             $endR2 = 1 + count($recRows);
             $sheetMaster->getStyle("A2:A{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheetMaster->getStyle("D2:D{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetMaster->getStyle("F2:H{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetMaster->getStyle("F2:I{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             // Memory-safe styling: apply cell borders if under 2500 rows, otherwise apply clean outline border
             if (count($recRows) <= 2500) {
-                $sheetMaster->getStyle("A2:H{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+                $sheetMaster->getStyle("A2:I{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
             } else {
-                $sheetMaster->getStyle("A2:H{$endR2}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+                $sheetMaster->getStyle("A2:I{$endR2}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
             }
         }
 
@@ -766,6 +910,7 @@ class ShoeExportService
             'F' => 14, // Kategori
             'G' => 18, // Panjang Kaki
             'H' => 16, // Ukuran Sepatu
+            'I' => 28, // Jenjang / Sheet Asal
         ];
         foreach ($sheetMasterWidths as $col => $w) {
             $sheetMaster->getColumnDimension($col)->setWidth($w);

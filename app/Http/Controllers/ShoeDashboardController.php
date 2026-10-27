@@ -20,8 +20,9 @@ class ShoeDashboardController extends Controller
         $kategori = $request->query('kategori');
         $gender = $request->query('gender');
         $pic = $request->query('pic');
+        $jenjang = $request->query('jenjang');
 
-        $data = $this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic);
+        $data = $this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic, $jenjang);
 
         return Inertia::render('Shoes/Dashboard', $data);
     }
@@ -36,14 +37,15 @@ class ShoeDashboardController extends Controller
         $kategori = $request->query('kategori');
         $gender = $request->query('gender');
         $pic = $request->query('pic');
+        $jenjang = $request->query('jenjang');
 
-        return response()->json($this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic));
+        return response()->json($this->getDashboardData($schoolId, $compareSchoolId, $kategori, $gender, $pic, $jenjang));
     }
 
     /**
      * Compile comprehensive dashboard & comparative metrics.
      */
-    protected function getDashboardData($schoolId = null, $compareSchoolId = null, $kategori = null, $gender = null, $pic = null): array
+    protected function getDashboardData($schoolId = null, $compareSchoolId = null, $kategori = null, $gender = null, $pic = null, $jenjang = null): array
     {
         $baseQuery = ShoeRecipient::query();
 
@@ -55,6 +57,9 @@ class ShoeDashboardController extends Controller
         }
         if (!empty($gender)) {
             $baseQuery->where('jenis_kelamin', $gender);
+        }
+        if (!empty($jenjang)) {
+            $baseQuery->jenjang($jenjang);
         }
         if (!empty($pic)) {
             $normPic = School::normalizePicName($pic);
@@ -262,49 +267,104 @@ class ShoeDashboardController extends Controller
         $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
         sort($allPics);
 
+        $sheetStatsRaw = (clone $baseQuery)->selectRaw('
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" THEN 1 ELSE 0 END) as srd_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srd_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srd_p,
+            
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" THEN 1 ELSE 0 END) as srmp_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srmp_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srmp_p,
+
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" THEN 1 ELSE 0 END) as srma_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srma_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srma_p,
+
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" THEN 1 ELSE 0 END) as staff_total,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as staff_l,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as staff_p
+        ')->first();
+
         return [
             'summary' => [
-                    'total_sepatu' => $totalSepatu,
-                    'total_sekolah' => $totalSekolah,
-                    'total_siswa' => $totalSiswa,
-                    'total_guru' => $totalGuru,
-                    'total_tendik' => $totalTendik,
-                    'total_staff' => $totalGuru + $totalTendik,
-                    'total_pria' => $totalPria,
-                    'total_wanita' => $totalWanita,
-                    'top_size' => $topSize,
-                    'top_size_count' => $topSizeCount,
-                    'top_size_pct' => $topSizePct,
-                    'avg_foot_length' => $avgFootLength,
-                    'min_size' => $minSize,
-                    'max_size' => $maxSize,
-                    'total_anomalies' => $totalAnomalies,
-                    'extreme_anomalies' => $extremeAnomalies,
+                'total_sepatu' => $totalSepatu,
+                'total_sekolah' => $totalSekolah,
+                'total_siswa' => $totalSiswa,
+                'total_guru' => $totalGuru,
+                'total_tendik' => $totalTendik,
+                'total_staff' => $totalGuru + $totalTendik,
+                'total_pria' => $totalPria,
+                'total_wanita' => $totalWanita,
+                'top_size' => $topSize,
+                'top_size_count' => $topSizeCount,
+                'top_size_pct' => $topSizePct,
+                'avg_foot_length' => $avgFootLength,
+                'min_size' => $minSize,
+                'max_size' => $maxSize,
+                'total_anomalies' => $totalAnomalies,
+                'extreme_anomalies' => $extremeAnomalies,
+                'sheet_stats' => [
+                    'srd' => [
+                        'name' => 'SRD (Sekolah Dasar)',
+                        'total' => (int)($sheetStatsRaw->srd_total ?? 0),
+                        'pria' => (int)($sheetStatsRaw->srd_l ?? 0),
+                        'wanita' => (int)($sheetStatsRaw->srd_p ?? 0),
+                        'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srd_total ?? 0) / $totalSepatu) * 100, 1) : 0,
+                    ],
+                    'srmp' => [
+                        'name' => 'SRMP (Menengah Pertama)',
+                        'total' => (int)($sheetStatsRaw->srmp_total ?? 0),
+                        'pria' => (int)($sheetStatsRaw->srmp_l ?? 0),
+                        'wanita' => (int)($sheetStatsRaw->srmp_p ?? 0),
+                        'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srmp_total ?? 0) / $totalSepatu) * 100, 1) : 0,
+                    ],
+                    'srma' => [
+                        'name' => 'SRMA (Menengah Atas)',
+                        'total' => (int)($sheetStatsRaw->srma_total ?? 0),
+                        'pria' => (int)($sheetStatsRaw->srma_l ?? 0),
+                        'wanita' => (int)($sheetStatsRaw->srma_p ?? 0),
+                        'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srma_total ?? 0) / $totalSepatu) * 100, 1) : 0,
+                    ],
+                    'staff' => [
+                        'name' => 'Guru & Tenaga Kependidikan',
+                        'total' => (int)($sheetStatsRaw->staff_total ?? 0),
+                        'pria' => (int)($sheetStatsRaw->staff_l ?? 0),
+                        'wanita' => (int)($sheetStatsRaw->staff_p ?? 0),
+                        'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->staff_total ?? 0) / $totalSepatu) * 100, 1) : 0,
+                    ],
                 ],
-                'size_distribution' => $sizeDistribution,
-                'size_groups' => $sizeGroups,
-                'category_distribution' => [
-                    ['name' => 'Siswa', 'value' => $totalSiswa, 'pct' => $totalSepatu > 0 ? round(($totalSiswa / $totalSepatu) * 100, 1) : 0],
-                    ['name' => 'Guru', 'value' => $totalGuru, 'pct' => $totalSepatu > 0 ? round(($totalGuru / $totalSepatu) * 100, 1) : 0],
-                    ['name' => 'Tenaga Kependidikan', 'value' => $totalTendik, 'pct' => $totalSepatu > 0 ? round(($totalTendik / $totalSepatu) * 100, 1) : 0],
-                ],
-                'gender_distribution' => [
-                    ['name' => 'Laki-Laki', 'value' => $totalPria, 'pct' => $totalSepatu > 0 ? round(($totalPria / $totalSepatu) * 100, 1) : 0],
-                    ['name' => 'Perempuan', 'value' => $totalWanita, 'pct' => $totalSepatu > 0 ? round(($totalWanita / $totalSepatu) * 100, 1) : 0],
-                ],
-                'schools' => $schools,
-                'comparator' => [
-                    'school_a' => $schoolA,
-                    'school_b' => $schoolB,
-                ],
-                'pic_list' => $allPics,
-                'filters' => [
-                    'school_id' => $schoolId ? (int)$schoolId : null,
-                    'compare_school_id' => $compareSchoolId ? (int)$compareSchoolId : null,
-                    'kategori' => $kategori ?: '',
-                    'gender' => $gender ?: '',
-                    'pic' => $pic ?: '',
-                ],
-            ];
-        }
+            ],
+            'size_distribution' => $sizeDistribution,
+            'size_groups' => $sizeGroups,
+            'jenjang_distribution' => [
+                ['name' => 'SRD (SD)', 'value' => (int)($sheetStatsRaw->srd_total ?? 0), 'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srd_total ?? 0) / $totalSepatu) * 100, 1) : 0, 'color' => '#10b981'],
+                ['name' => 'SRMP (SMP)', 'value' => (int)($sheetStatsRaw->srmp_total ?? 0), 'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srmp_total ?? 0) / $totalSepatu) * 100, 1) : 0, 'color' => '#3b82f6'],
+                ['name' => 'SRMA (SMA)', 'value' => (int)($sheetStatsRaw->srma_total ?? 0), 'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->srma_total ?? 0) / $totalSepatu) * 100, 1) : 0, 'color' => '#8b5cf6'],
+                ['name' => 'Guru & Tendik', 'value' => (int)($sheetStatsRaw->staff_total ?? 0), 'pct' => $totalSepatu > 0 ? round(((int)($sheetStatsRaw->staff_total ?? 0) / $totalSepatu) * 100, 1) : 0, 'color' => '#f59e0b'],
+            ],
+            'category_distribution' => [
+                ['name' => 'Siswa', 'value' => $totalSiswa, 'pct' => $totalSepatu > 0 ? round(($totalSiswa / $totalSepatu) * 100, 1) : 0],
+                ['name' => 'Guru', 'value' => $totalGuru, 'pct' => $totalSepatu > 0 ? round(($totalGuru / $totalSepatu) * 100, 1) : 0],
+                ['name' => 'Tenaga Kependidikan', 'value' => $totalTendik, 'pct' => $totalSepatu > 0 ? round(($totalTendik / $totalSepatu) * 100, 1) : 0],
+            ],
+            'gender_distribution' => [
+                ['name' => 'Laki-Laki', 'value' => $totalPria, 'pct' => $totalSepatu > 0 ? round(($totalPria / $totalSepatu) * 100, 1) : 0],
+                ['name' => 'Perempuan', 'value' => $totalWanita, 'pct' => $totalSepatu > 0 ? round(($totalWanita / $totalSepatu) * 100, 1) : 0],
+            ],
+            'schools' => $schools,
+            'comparator' => [
+                'school_a' => $schoolA,
+                'school_b' => $schoolB,
+            ],
+            'pic_list' => $allPics,
+            'filters' => [
+                'school_id' => $schoolId ? (int)$schoolId : null,
+                'compare_school_id' => $compareSchoolId ? (int)$compareSchoolId : null,
+                'kategori' => $kategori ?: '',
+                'gender' => $gender ?: '',
+                'pic' => $pic ?: '',
+                'jenjang' => $jenjang ?: '',
+            ],
+        ];
+    }
 }

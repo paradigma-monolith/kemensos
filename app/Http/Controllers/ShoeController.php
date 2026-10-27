@@ -33,6 +33,7 @@ class ShoeController extends Controller
         $pic = $request->query('pic');
         $search = $request->query('search');
         $onlyAnomaly = $request->boolean('anomaly');
+        $jenjang = $request->query('jenjang');
 
         // Master PIC list combining default constant and any existing database values
         $existingPics = School::whereNotNull('pic_nama')
@@ -54,6 +55,15 @@ class ShoeController extends Controller
             $normPic = School::normalizePicName($pic);
             $statsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
+        if ($kategori) {
+            $statsQuery->where('kategori', $kategori);
+        }
+        if ($gender) {
+            $statsQuery->where('jenis_kelamin', $gender);
+        }
+        if ($jenjang) {
+            $statsQuery->jenjang($jenjang);
+        }
 
         $totalRecipients = (clone $statsQuery)->count();
         $totalSiswa = (clone $statsQuery)->where('kategori', 'siswa')->count();
@@ -64,10 +74,73 @@ class ShoeController extends Controller
         $totalAnomalies = (clone $statsQuery)->anomaly()->count();
         $extremeAnomalies = (clone $statsQuery)->where('ukuran_sepatu', '>', 100)->count();
 
+        // Sheet-based stats (SRD, SRMP, SRMA) for the active school & PIC context
+        $levelStatsQuery = ShoeRecipient::query();
+        if ($schoolId) {
+            $levelStatsQuery->where('school_id', $schoolId);
+        }
+        if ($pic) {
+            $normPic = School::normalizePicName($pic);
+            $levelStatsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+        }
+
+        $sheetStatsRaw = (clone $levelStatsQuery)->selectRaw('
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" THEN 1 ELSE 0 END) as srd_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srd_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srd_p,
+            
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" THEN 1 ELSE 0 END) as srmp_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srmp_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srmp_p,
+
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" THEN 1 ELSE 0 END) as srma_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srma_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srma_p,
+
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" THEN 1 ELSE 0 END) as staff_total,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as staff_l,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as staff_p
+        ')->first();
+
+        $sheetStats = [
+            'srd' => [
+                'code' => 'SRD',
+                'label' => 'Sekolah Rakyat Dasar (SD)',
+                'sheet_pattern' => 'SRD',
+                'total' => (int)($sheetStatsRaw->srd_total ?? 0),
+                'pria' => (int)($sheetStatsRaw->srd_l ?? 0),
+                'wanita' => (int)($sheetStatsRaw->srd_p ?? 0),
+            ],
+            'srmp' => [
+                'code' => 'SRMP',
+                'label' => 'Sekolah Rakyat Menengah Pertama (SMP)',
+                'sheet_pattern' => 'SRMP',
+                'total' => (int)($sheetStatsRaw->srmp_total ?? 0),
+                'pria' => (int)($sheetStatsRaw->srmp_l ?? 0),
+                'wanita' => (int)($sheetStatsRaw->srmp_p ?? 0),
+            ],
+            'srma' => [
+                'code' => 'SRMA',
+                'label' => 'Sekolah Rakyat Menengah Atas (SMA)',
+                'sheet_pattern' => 'SRMA',
+                'total' => (int)($sheetStatsRaw->srma_total ?? 0),
+                'pria' => (int)($sheetStatsRaw->srma_l ?? 0),
+                'wanita' => (int)($sheetStatsRaw->srma_p ?? 0),
+            ],
+            'staff' => [
+                'code' => 'STAFF',
+                'label' => 'Guru & Tenaga Kependidikan',
+                'sheet_pattern' => 'GURU/TENDIK',
+                'total' => (int)($sheetStatsRaw->staff_total ?? 0),
+                'pria' => (int)($sheetStatsRaw->staff_l ?? 0),
+                'wanita' => (int)($sheetStatsRaw->staff_p ?? 0),
+            ],
+        ];
+
         $totalSchools = School::count();
         $totalBatches = ShoeImportBatch::count();
 
-        // 2. Matrix Breakdown by Shoe Size
+        // 2. Matrix Breakdown by Shoe Size (including SRD, SRMP, SRMA)
         $matrixQuery = ShoeRecipient::query();
         if ($schoolId) {
             $matrixQuery->where('school_id', $schoolId);
@@ -76,16 +149,37 @@ class ShoeController extends Controller
             $normPic = School::normalizePicName($pic);
             $matrixQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
         }
+        if ($kategori) {
+            $matrixQuery->where('kategori', $kategori);
+        }
+        if ($gender) {
+            $matrixQuery->where('jenis_kelamin', $gender);
+        }
+        if ($jenjang) {
+            $matrixQuery->jenjang($jenjang);
+        }
 
         $sizeMatrix = $matrixQuery->selectRaw('
             ukuran_sepatu,
             COUNT(*) as total,
             SUM(CASE WHEN kategori = "siswa" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as siswa_l,
             SUM(CASE WHEN kategori = "siswa" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as siswa_p,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srd_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srd_p,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" THEN 1 ELSE 0 END) as srd_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srmp_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srmp_p,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMP%" THEN 1 ELSE 0 END) as srmp_total,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as srma_l,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as srma_p,
+            SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRMA%" THEN 1 ELSE 0 END) as srma_total,
             SUM(CASE WHEN kategori = "guru" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as guru_l,
             SUM(CASE WHEN kategori = "guru" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as guru_p,
             SUM(CASE WHEN kategori = "tendik" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as tendik_l,
             SUM(CASE WHEN kategori = "tendik" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as tendik_p,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "L" THEN 1 ELSE 0 END) as staff_l,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" AND jenis_kelamin = "P" THEN 1 ELSE 0 END) as staff_p,
+            SUM(CASE WHEN UPPER(sheet_source) NOT LIKE "%SRD%" AND UPPER(sheet_source) NOT LIKE "%SRMP%" AND UPPER(sheet_source) NOT LIKE "%SRMA%" THEN 1 ELSE 0 END) as staff_total,
             SUM(CASE WHEN jenis_kelamin = "L" THEN 1 ELSE 0 END) as total_pria,
             SUM(CASE WHEN jenis_kelamin = "P" THEN 1 ELSE 0 END) as total_wanita
         ')
@@ -98,6 +192,7 @@ class ShoeController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->when($kategori, fn($q) => $q->where('kategori', $kategori))
             ->when($gender, fn($q) => $q->where('jenis_kelamin', $gender))
+            ->when($jenjang, fn($q) => $q->jenjang($jenjang))
             ->when($onlyAnomaly, fn($q) => $q->anomaly())
             ->when($pic, function ($q, $pic) {
                 $norm = School::normalizePicName($pic);
@@ -108,6 +203,7 @@ class ShoeController extends Controller
                     $sub->where('nama_lengkap', 'like', "%{$search}%")
                         ->orWhere('jabatan', 'like', "%{$search}%")
                         ->orWhere('ukuran_sepatu', 'like', "%{$search}%")
+                        ->orWhere('sheet_source', 'like', "%{$search}%")
                         ->orWhereHas('school', fn($sq) => $sq->where('nama_sekolah', 'like', "%{$search}%")->orWhere('pic_nama', 'like', "%{$search}%"));
                 });
             })
@@ -155,12 +251,14 @@ class ShoeController extends Controller
                 'total_batches' => $totalBatches,
                 'total_anomalies' => $totalAnomalies,
                 'extreme_anomalies' => $extremeAnomalies,
+                'sheet_stats' => $sheetStats,
             ],
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,
                 'kategori' => $kategori,
                 'gender' => $gender,
                 'pic' => $pic,
+                'jenjang' => $jenjang,
                 'search' => $search,
                 'anomaly' => $onlyAnomaly,
                 'tab' => $tab,

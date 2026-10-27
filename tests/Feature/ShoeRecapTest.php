@@ -553,6 +553,102 @@ class ShoeRecapTest extends TestCase
         $this->assertStringContainsString('Rekap_Sepatu_', (string) $response->headers->get('content-disposition'));
         $this->assertEquals('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('content-type'));
     }
+
+    public function test_shoe_recipient_categorizes_by_sheet_source_srd_srmp_srma(): void
+    {
+        $user = User::factory()->create();
+        $school = School::create(['nama_sekolah' => 'SR Sentra Terpadu', 'kota' => 'Bogor']);
+        $batch = ShoeImportBatch::create([
+            'school_id' => $school->id,
+            'file_name' => 'sentra.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        $recSrd = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Anak SD',
+            'sheet_source' => 'SEPATU SISWA SRD',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 36,
+        ]);
+
+        $recSrmp = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 2,
+            'nama_lengkap' => 'Anak SMP',
+            'sheet_source' => 'SEPATU SISWA SRMP ',
+            'jenis_kelamin' => 'P',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 38,
+        ]);
+
+        $recSrma = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 3,
+            'nama_lengkap' => 'Anak SMA',
+            'sheet_source' => 'SEPATU SISWA SRMA ',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 42,
+        ]);
+
+        $recStaff = ShoeRecipient::create([
+            'school_id' => $school->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 4,
+            'nama_lengkap' => 'Bapak Guru',
+            'sheet_source' => 'SEPATU TENDIK,GURU (LAKI-LAKI)',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Guru',
+            'kategori' => 'guru',
+            'ukuran_sepatu' => 43,
+        ]);
+
+        // Verify model accessors
+        $this->assertEquals('SRD', $recSrd->jenjang);
+        $this->assertEquals('SRD (Sekolah Rakyat Dasar)', $recSrd->jenjang_label);
+
+        $this->assertEquals('SRMP', $recSrmp->jenjang);
+        $this->assertEquals('SRMP (Sekolah Rakyat Menengah Pertama)', $recSrmp->jenjang_label);
+
+        $this->assertEquals('SRMA', $recSrma->jenjang);
+        $this->assertEquals('SRMA (Sekolah Rakyat Menengah Atas)', $recSrma->jenjang_label);
+
+        $this->assertEquals('GURU', $recStaff->jenjang);
+        $this->assertEquals('Guru', $recStaff->jenjang_label);
+
+        // Verify scopeJenjang
+        $this->assertEquals(1, ShoeRecipient::jenjang('SRD')->count());
+        $this->assertEquals(1, ShoeRecipient::jenjang('SRMP')->count());
+        $this->assertEquals(1, ShoeRecipient::jenjang('SRMA')->count());
+        $this->assertEquals(1, ShoeRecipient::jenjang('STAFF')->count());
+
+        // Verify filtering on /shoes endpoint
+        $resSrd = $this->actingAs($user)->get('/shoes?jenjang=SRD');
+        $resSrd->assertStatus(200);
+
+        // Verify API dashboard data includes sheet_stats & jenjang_distribution
+        $apiRes = $this->actingAs($user)->get('/api/shoes/dashboard-data');
+        $apiRes->assertStatus(200);
+        $data = $apiRes->json();
+
+        $this->assertArrayHasKey('sheet_stats', $data['summary']);
+        $this->assertEquals(1, $data['summary']['sheet_stats']['srd']['total']);
+        $this->assertEquals(1, $data['summary']['sheet_stats']['srmp']['total']);
+        $this->assertEquals(1, $data['summary']['sheet_stats']['srma']['total']);
+        $this->assertEquals(1, $data['summary']['sheet_stats']['staff']['total']);
+
+        $this->assertArrayHasKey('jenjang_distribution', $data);
+        $this->assertCount(4, $data['jenjang_distribution']);
+    }
 }
 
 

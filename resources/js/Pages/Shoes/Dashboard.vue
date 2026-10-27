@@ -24,7 +24,9 @@ import {
   Info,
   ChevronRight,
   User,
-  Activity
+  Activity,
+  GraduationCap,
+  BookOpen
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -45,6 +47,10 @@ const props = defineProps({
     default: () => [],
   },
   gender_distribution: {
+    type: Array,
+    default: () => [],
+  },
+  jenjang_distribution: {
     type: Array,
     default: () => [],
   },
@@ -77,6 +83,7 @@ const props = defineProps({
     default: () => ({
       school_id: null,
       compare_school_id: null,
+      jenjang: '',
       kategori: '',
       gender: '',
       pic: '',
@@ -95,6 +102,7 @@ const getUrl = (path) => {
 
 // Filter State
 const selectedSchool = ref(props.filters.school_id ? String(props.filters.school_id) : '');
+const selectedJenjang = ref(props.filters.jenjang || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
 const selectedPic = ref(props.filters.pic || '');
@@ -127,6 +135,7 @@ const applyFilters = () => {
   router.get(getUrl('/dashboard'), {
     school_id: selectedSchool.value || undefined,
     compare_school_id: schoolBId.value || undefined,
+    jenjang: selectedJenjang.value || undefined,
     kategori: selectedKategori.value || undefined,
     gender: selectedGender.value || undefined,
     pic: selectedPic.value || undefined,
@@ -136,8 +145,18 @@ const applyFilters = () => {
   });
 };
 
+const filterByJenjang = (jenjangKey) => {
+  if (selectedJenjang.value === jenjangKey) {
+    selectedJenjang.value = '';
+  } else {
+    selectedJenjang.value = jenjangKey;
+  }
+  applyFilters();
+};
+
 const resetFilters = () => {
   selectedSchool.value = '';
+  selectedJenjang.value = '';
   selectedKategori.value = '';
   selectedGender.value = '';
   selectedPic.value = '';
@@ -337,7 +356,53 @@ const genderChartOption = computed(() => {
   };
 });
 
-// 4. Side-by-Side School Comparison Chart
+// 4. Jenjang Sheet Composition (Donut Chart - SRD, SRMP, SRMA, Guru/Tendik)
+const jenjangChartOption = computed(() => {
+  const textColor = isDark.value ? '#f8fafc' : '#0f172a';
+  const srd = props.summary.sheet_stats?.srd?.total || 0;
+  const srmp = props.summary.sheet_stats?.srmp?.total || 0;
+  const srma = props.summary.sheet_stats?.srma?.total || 0;
+  const staff = props.summary.sheet_stats?.staff?.total || 0;
+
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} pasang ({d}%)',
+      backgroundColor: isDark.value ? '#0f172a' : '#ffffff',
+      borderColor: isDark.value ? '#334155' : '#e2e8f0',
+      textStyle: { color: textColor, fontSize: 12 },
+    },
+    legend: {
+      bottom: '0%',
+      left: 'center',
+      textStyle: { color: isDark.value ? '#94a3b8' : '#475569', fontSize: 11 },
+      icon: 'circle',
+    },
+    series: [
+      {
+        name: 'Jenjang Sheet',
+        type: 'pie',
+        radius: ['52%', '78%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: isDark.value ? '#090d16' : '#ffffff',
+          borderWidth: 2,
+        },
+        label: { show: false },
+        data: [
+          { value: srd, name: 'SRD (Dasar)', itemStyle: { color: '#0284c7' } },
+          { value: srmp, name: 'SRMP (SMP)', itemStyle: { color: '#059669' } },
+          { value: srma, name: 'SRMA (SMA)', itemStyle: { color: '#7c3aed' } },
+          { value: staff, name: 'Guru & Tendik', itemStyle: { color: '#d97706' } },
+        ],
+      },
+    ],
+  };
+});
+
+// 5. Side-by-Side School Comparison Chart
 const schoolComparisonChartOption = computed(() => {
   const textColor = isDark.value ? '#94a3b8' : '#475569';
   const gridColor = isDark.value ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
@@ -455,7 +520,7 @@ const schoolComparisonChartOption = computed(() => {
             <span>Filter Analitik:</span>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1 max-w-4xl">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 flex-1 max-w-5xl">
             <!-- School Filter -->
             <div>
               <select
@@ -467,6 +532,21 @@ const schoolComparisonChartOption = computed(() => {
                 <option v-for="sch in schools" :key="sch.id" :value="String(sch.id)">
                   {{ sch.nama_sekolah }} ({{ sch.total_recipients }} psg)
                 </option>
+              </select>
+            </div>
+
+            <!-- Jenjang Sheet Filter -->
+            <div>
+              <select
+                v-model="selectedJenjang"
+                @change="applyFilters"
+                class="w-full text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer font-medium"
+              >
+                <option value="">Semua Jenjang (Sheet)</option>
+                <option value="SRD">SRD (Sekolah Dasar)</option>
+                <option value="SRMP">SRMP (Menengah Pertama)</option>
+                <option value="SRMA">SRMA (Menengah Atas)</option>
+                <option value="STAFF">Guru &amp; Tendik</option>
               </select>
             </div>
 
@@ -514,7 +594,7 @@ const schoolComparisonChartOption = computed(() => {
 
           <!-- Reset Filter Button -->
           <button
-            v-if="selectedSchool || selectedPic || selectedKategori || selectedGender"
+            v-if="selectedSchool || selectedPic || selectedJenjang || selectedKategori || selectedGender"
             @click="resetFilters"
             class="text-xs px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/50 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
@@ -623,11 +703,171 @@ const schoolComparisonChartOption = computed(() => {
         </div>
       </div>
 
+      <!-- Rekapitulasi Berdasarkan Jenjang / Nama Sheet (SRD, SRMP, SRMA, Guru/Tendik) -->
+      <div class="space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <GraduationCap class="w-4 h-4 text-indigo-500" />
+              <span>Rekapitulasi Kebutuhan Sepatu Berdasarkan Sheet Jenjang</span>
+            </h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Pengelompokan otomatis berdasarkan nama sheet berkas Excel: Siswa SRD, Siswa SRMP, Siswa SRMA, dan Tenaga Pendidik/Tendik.
+            </p>
+          </div>
+          <div v-if="selectedJenjang" class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">Filter Aktif:</span>
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+              {{ selectedJenjang }}
+              <button @click="filterByJenjang(selectedJenjang)" class="ml-1 hover:text-rose-500 cursor-pointer">×</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Card 1: SRD -->
+          <div
+            @click="filterByJenjang('SRD')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group shadow-xs"
+            :class="selectedJenjang === 'SRD'
+              ? 'bg-sky-50/80 dark:bg-sky-950/40 border-sky-400 dark:border-sky-600 ring-2 ring-sky-500/20'
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-sky-300 dark:hover:border-sky-700'"
+          >
+            <div class="flex items-center justify-between">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/60">
+                <GraduationCap class="w-3.5 h-3.5" />
+                <span>SRD (Sekolah Dasar)</span>
+              </span>
+              <span class="text-[11px] font-mono text-slate-400">Sheet *SRD*</span>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <div class="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                {{ summary.sheet_stats?.srd?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <div class="text-xs font-medium text-sky-600 dark:text-sky-400">
+                {{ summary.total_sepatu > 0 ? Math.round(((summary.sheet_stats?.srd?.total || 0) / summary.total_sepatu) * 100) : 0 }}% total
+              </div>
+            </div>
+            <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Rincian Gender:</span>
+              <div class="flex items-center gap-2 font-mono">
+                <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ summary.sheet_stats?.srd?.pria || 0 }} L</span>
+                <span class="text-slate-300 dark:text-slate-700">|</span>
+                <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ summary.sheet_stats?.srd?.wanita || 0 }} P</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: SRMP -->
+          <div
+            @click="filterByJenjang('SRMP')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group shadow-xs"
+            :class="selectedJenjang === 'SRMP'
+              ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-500/20'
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700'"
+          >
+            <div class="flex items-center justify-between">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60">
+                <GraduationCap class="w-3.5 h-3.5" />
+                <span>SRMP (Menengah Pertama)</span>
+              </span>
+              <span class="text-[11px] font-mono text-slate-400">Sheet *SRMP*</span>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <div class="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                {{ summary.sheet_stats?.srmp?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <div class="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                {{ summary.total_sepatu > 0 ? Math.round(((summary.sheet_stats?.srmp?.total || 0) / summary.total_sepatu) * 100) : 0 }}% total
+              </div>
+            </div>
+            <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Rincian Gender:</span>
+              <div class="flex items-center gap-2 font-mono">
+                <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ summary.sheet_stats?.srmp?.pria || 0 }} L</span>
+                <span class="text-slate-300 dark:text-slate-700">|</span>
+                <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ summary.sheet_stats?.srmp?.wanita || 0 }} P</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: SRMA -->
+          <div
+            @click="filterByJenjang('SRMA')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group shadow-xs"
+            :class="selectedJenjang === 'SRMA'
+              ? 'bg-purple-50/80 dark:bg-purple-950/40 border-purple-400 dark:border-purple-600 ring-2 ring-purple-500/20'
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700'"
+          >
+            <div class="flex items-center justify-between">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60">
+                <GraduationCap class="w-3.5 h-3.5" />
+                <span>SRMA (Menengah Atas)</span>
+              </span>
+              <span class="text-[11px] font-mono text-slate-400">Sheet *SRMA*</span>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <div class="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                {{ summary.sheet_stats?.srma?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <div class="text-xs font-medium text-purple-600 dark:text-purple-400">
+                {{ summary.total_sepatu > 0 ? Math.round(((summary.sheet_stats?.srma?.total || 0) / summary.total_sepatu) * 100) : 0 }}% total
+              </div>
+            </div>
+            <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Rincian Gender:</span>
+              <div class="flex items-center gap-2 font-mono">
+                <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ summary.sheet_stats?.srma?.pria || 0 }} L</span>
+                <span class="text-slate-300 dark:text-slate-700">|</span>
+                <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ summary.sheet_stats?.srma?.wanita || 0 }} P</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Guru & Tendik -->
+          <div
+            @click="filterByJenjang('STAFF')"
+            class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group shadow-xs"
+            :class="selectedJenjang === 'STAFF'
+              ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/20'
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-700'"
+          >
+            <div class="flex items-center justify-between">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60">
+                <UserCheck class="w-3.5 h-3.5" />
+                <span>Guru &amp; Tendik</span>
+              </span>
+              <span class="text-[11px] font-mono text-slate-400">Sheet *TENDIK,GURU*</span>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <div class="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                {{ summary.sheet_stats?.staff?.total || 0 }}
+                <span class="text-xs font-normal text-slate-500">pasang</span>
+              </div>
+              <div class="text-xs font-medium text-amber-600 dark:text-amber-400">
+                {{ summary.total_sepatu > 0 ? Math.round(((summary.sheet_stats?.staff?.total || 0) / summary.total_sepatu) * 100) : 0 }}% total
+              </div>
+            </div>
+            <div class="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+              <span class="text-slate-500">Rincian Gender:</span>
+              <div class="flex items-center gap-2 font-mono">
+                <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ summary.sheet_stats?.staff?.pria || 0 }} L</span>
+                <span class="text-slate-300 dark:text-slate-700">|</span>
+                <span class="text-pink-600 dark:text-pink-400 font-semibold">{{ summary.sheet_stats?.staff?.wanita || 0 }} P</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Main Visualizations: Size Distribution & Donut Compositions -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="space-y-6">
         
-        <!-- Left 2 Cols: Detailed Size Distribution Matrix Chart -->
-        <div class="lg:col-span-2 p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+        <!-- Detailed Size Distribution Matrix Chart -->
+        <div class="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <div class="flex items-center justify-between mb-4">
             <div>
               <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -646,24 +886,33 @@ const schoolComparisonChartOption = computed(() => {
           <BaseChart :option="sizeDistributionChartOption" height="340px" />
         </div>
 
-        <!-- Right 1 Col: Donut Composition Charts -->
-        <div class="space-y-6">
-          <!-- Donut 1: Category Breakdown -->
+        <!-- 3 Donut Composition Charts Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Donut 1: Jenjang Sheet Breakdown -->
+          <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1">
+              <GraduationCap class="w-3.5 h-3.5 text-indigo-500" />
+              <span>Komposisi Jenjang Sheet (SR)</span>
+            </h3>
+            <BaseChart :option="jenjangChartOption" height="185px" />
+          </div>
+
+          <!-- Donut 2: Category Breakdown -->
           <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1">
               <PieChart class="w-3.5 h-3.5 text-blue-500" />
               <span>Komposisi Kategori Penerima</span>
             </h3>
-            <BaseChart :option="categoryChartOption" height="175px" />
+            <BaseChart :option="categoryChartOption" height="185px" />
           </div>
 
-          <!-- Donut 2: Gender Breakdown -->
+          <!-- Donut 3: Gender Breakdown -->
           <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1">
               <Users class="w-3.5 h-3.5 text-rose-500" />
               <span>Rasio Kebutuhan Gender</span>
             </h3>
-            <BaseChart :option="genderChartOption" height="175px" />
+            <BaseChart :option="genderChartOption" height="185px" />
           </div>
         </div>
       </div>

@@ -33,6 +33,8 @@ class ShoeRecipient extends Model
     protected $appends = [
         'is_anomaly',
         'anomaly_reason',
+        'jenjang',
+        'jenjang_label',
     ];
 
     public function scopeAnomaly($query)
@@ -42,6 +44,59 @@ class ShoeRecipient extends Model
               ->orWhere('ukuran_sepatu', '<', 26)
               ->orWhereNull('ukuran_sepatu');
         });
+    }
+
+    public function scopeJenjang($query, $jenjang)
+    {
+        if (empty($jenjang)) {
+            return $query;
+        }
+
+        $j = strtoupper(trim($jenjang));
+        return match ($j) {
+            'SRD' => $query->where('sheet_source', 'like', '%SRD%'),
+            'SRMP' => $query->where('sheet_source', 'like', '%SRMP%'),
+            'SRMA' => $query->where('sheet_source', 'like', '%SRMA%'),
+            'STAFF', 'GURU_TENDIK' => $query->where(function ($q) {
+                $q->where('sheet_source', 'not like', '%SRD%')
+                  ->where('sheet_source', 'not like', '%SRMP%')
+                  ->where('sheet_source', 'not like', '%SRMA%');
+            }),
+            default => $query->where('sheet_source', 'like', "%{$jenjang}%"),
+        };
+    }
+
+    public function getJenjangAttribute(): string
+    {
+        $sheet = strtoupper((string)($this->sheet_source ?? ''));
+        if (str_contains($sheet, 'SRD')) {
+            return 'SRD';
+        }
+        if (str_contains($sheet, 'SRMP')) {
+            return 'SRMP';
+        }
+        if (str_contains($sheet, 'SRMA')) {
+            return 'SRMA';
+        }
+        if (str_contains($sheet, 'GURU') || $this->kategori === 'guru') {
+            return 'GURU';
+        }
+        if (str_contains($sheet, 'TENDIK') || $this->kategori === 'tendik') {
+            return 'TENDIK';
+        }
+        return 'STAFF';
+    }
+
+    public function getJenjangLabelAttribute(): string
+    {
+        return match ($this->jenjang) {
+            'SRD' => 'SRD (Sekolah Rakyat Dasar)',
+            'SRMP' => 'SRMP (Sekolah Rakyat Menengah Pertama)',
+            'SRMA' => 'SRMA (Sekolah Rakyat Menengah Atas)',
+            'GURU' => 'Guru',
+            'TENDIK' => 'Tenaga Kependidikan',
+            default => 'Guru & Tendik',
+        };
     }
 
     public function getIsAnomalyAttribute(): bool
