@@ -107,31 +107,43 @@ class UniformController extends Controller
         );
         $totalBatches = $statsBatchQuery->count();
         $totalSchools = School::whereIn('id', (clone $statsBatchQuery)->whereNotNull('school_id')->pluck('school_id'))->distinct()->count();
+        $matchingBatchIds = (clone $statsBatchQuery)->pluck('id')->toArray();
 
-        // Jenjang stats for quick cards (SRD, SRMP, SRMA)
+        // Jenjang stats for quick cards (SRD, SRMP, SRMA) strictly for SISWA within matching batches
         $sheetStats = [
-            'srd' => [
-                'total' => (int)UniformImportBatch::where(function ($q) {
-                    $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%');
-                })->sum('total_rows'),
-                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%'))->where('jenis_kelamin', 'L')->count(),
-                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%'))->where('jenis_kelamin', 'P')->count(),
-            ],
-            'srmp' => [
-                'total' => (int)UniformImportBatch::where(function ($q) {
-                    $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%');
-                })->sum('total_rows'),
-                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%'))->where('jenis_kelamin', 'L')->count(),
-                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%'))->where('jenis_kelamin', 'P')->count(),
-            ],
-            'srma' => [
-                'total' => (int)UniformImportBatch::where(function ($q) {
-                    $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%');
-                })->sum('total_rows'),
-                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%'))->where('jenis_kelamin', 'L')->count(),
-                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%'))->where('jenis_kelamin', 'P')->count(),
-            ],
+            'srd' => ['total' => 0, 'pria' => 0, 'wanita' => 0],
+            'srmp' => ['total' => 0, 'pria' => 0, 'wanita' => 0],
+            'srma' => ['total' => 0, 'pria' => 0, 'wanita' => 0],
         ];
+
+        if (!empty($matchingBatchIds)) {
+            $siswaRecipients = UniformRecipient::whereIn('batch_id', $matchingBatchIds)
+                ->where('sheet_name', 'SISWA')
+                ->get(['jenjang', 'jenis_kelamin', 'batch_id']);
+
+            $batchSchoolNames = UniformImportBatch::whereIn('id', $matchingBatchIds)->pluck('school_name', 'id')->toArray();
+
+            foreach ($siswaRecipients as $sr) {
+                $j = strtoupper(trim((string)$sr->jenjang));
+                $sch = strtoupper((string)($batchSchoolNames[$sr->batch_id] ?? ''));
+                $jk = UniformExcelImportService::normalizeGender($sr->jenis_kelamin);
+
+                if (str_contains($j, 'SD') || str_contains($j, 'SRD') || str_contains($sch, 'SRD')) {
+                    $code = 'srd';
+                } elseif (str_contains($j, 'SMP') || str_contains($j, 'SRMP') || str_contains($sch, 'SRMP')) {
+                    $code = 'srmp';
+                } else {
+                    $code = 'srma';
+                }
+
+                $sheetStats[$code]['total']++;
+                if ($jk === 'L') {
+                    $sheetStats[$code]['pria']++;
+                } else {
+                    $sheetStats[$code]['wanita']++;
+                }
+            }
+        }
 
         // Schools that have uniform batches
         $schools = School::withCount(['uniformBatches', 'uniformRecipients'])
@@ -199,8 +211,31 @@ class UniformController extends Controller
             ];
         }
 
+        // Fallback to activeRecap if database has no rows for quick cards
+        if ($sheetStats['srd']['total'] === 0 && $sheetStats['srmp']['total'] === 0 && $sheetStats['srma']['total'] === 0 && !empty($activeRecap['recapitulation']['SISWA']['data'])) {
+            $sch = strtoupper((string)($activeRecap['school_name'] ?? ''));
+            foreach ($activeRecap['recapitulation']['SISWA']['data'] as $r) {
+                $j = strtoupper(trim((string)($r['jenjang'] ?? '')));
+                $jk = UniformExcelImportService::normalizeGender($r['jenis_kelamin'] ?? null);
+
+                if (str_contains($j, 'SD') || str_contains($j, 'SRD') || str_contains($sch, 'SRD')) {
+                    $code = 'srd';
+                } elseif (str_contains($j, 'SMP') || str_contains($j, 'SRMP') || str_contains($sch, 'SRMP')) {
+                    $code = 'srmp';
+                } else {
+                    $code = 'srma';
+                }
+
+                $sheetStats[$code]['total']++;
+                if ($jk === 'L') {
+                    $sheetStats[$code]['pria']++;
+                } else {
+                    $sheetStats[$code]['wanita']++;
+                }
+            }
+        }
+
         // Aggregate counts by sheet and gender across matching batches
-        $matchingBatchIds = (clone $statsBatchQuery)->pluck('id')->toArray();
         $sheetCountsMap = [];
         if (!empty($matchingBatchIds)) {
             $recipientCountsBySheet = UniformRecipient::whereIn('batch_id', $matchingBatchIds)
@@ -210,7 +245,7 @@ class UniformController extends Controller
 
             foreach ($recipientCountsBySheet as $row) {
                 $sName = $row->sheet_name;
-                $jk = $row->jenis_kelamin;
+                $jk = UniformExcelImportService::normalizeGender($row->jenis_kelamin);
                 if (!isset($sheetCountsMap[$sName])) {
                     $sheetCountsMap[$sName] = ['total' => 0, 'pria' => 0, 'wanita' => 0];
                 }
@@ -228,10 +263,11 @@ class UniformController extends Controller
             foreach ($activeRecap['recapitulation'] as $sheetName => $sData) {
                 $sheetCountsMap[$sheetName] = ['total' => 0, 'pria' => 0, 'wanita' => 0];
                 foreach ($sData['data'] ?? [] as $r) {
+                    $jk = UniformExcelImportService::normalizeGender($r['jenis_kelamin'] ?? null);
                     $sheetCountsMap[$sheetName]['total']++;
-                    if (($r['jenis_kelamin'] ?? '') === 'L') {
+                    if ($jk === 'L') {
                         $sheetCountsMap[$sheetName]['pria']++;
-                    } elseif (($r['jenis_kelamin'] ?? '') === 'P') {
+                    } elseif ($jk === 'P') {
                         $sheetCountsMap[$sheetName]['wanita']++;
                     }
                 }
@@ -350,6 +386,7 @@ class UniformController extends Controller
             ],
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,
+                'batch_id' => $batchId ? (int)$batchId : ($activeRecap['batch_id'] ?? null),
                 'pic' => $pic,
                 'jenjang' => $jenjang,
                 'kategori' => $kategori,

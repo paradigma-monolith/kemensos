@@ -664,7 +664,7 @@ const syncAllFromStorage = () => {
           </button>
 
           <a
-            :href="`/uniforms/export/excel${filters.school_id ? '?school_id=' + filters.school_id : (initialRecap.batch_id ? '?batch_id=' + initialRecap.batch_id : '')}`"
+            :href="`/uniforms/export/excel${filters.school_id ? '?school_id=' + filters.school_id : (filters.batch_id ? '?batch_id=' + filters.batch_id : (initialRecap?.batch_id ? '?batch_id=' + initialRecap.batch_id : ''))}`"
             class="px-3.5 py-2.5 rounded-xl font-medium text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
             title="Export Rekapitulasi ke Excel (.xlsx)"
           >

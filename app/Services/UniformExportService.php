@@ -126,7 +126,7 @@ class UniformExportService
             $isSiswa = ($sheetKey === 'SISWA');
 
             foreach ($sheetData as $row) {
-                $jk = strtoupper(trim((string)($row['jenis_kelamin'] ?? '')));
+                $jk = UniformExcelImportService::normalizeGender($row['jenis_kelamin'] ?? null);
                 $isL = ($jk === 'L');
 
                 if ($isL) {
@@ -175,9 +175,9 @@ class UniformExportService
                 $jCode = 'STAFF';
                 if ($isSiswa) {
                     $jVal = strtoupper(trim((string)($row['jenjang'] ?? '')));
-                    if (str_contains($jVal, 'SD') || str_contains($jVal, 'SRD')) {
+                    if (str_contains($jVal, 'SD') || str_contains($jVal, 'SRD') || str_contains($scopeName, 'SRD')) {
                         $jCode = 'SRD';
-                    } elseif (str_contains($jVal, 'SMP') || str_contains($jVal, 'SRMP')) {
+                    } elseif (str_contains($jVal, 'SMP') || str_contains($jVal, 'SRMP') || str_contains($scopeName, 'SRMP')) {
                         $jCode = 'SRMP';
                     } else {
                         $jCode = 'SRMA';
@@ -885,3 +885,4 @@ class UniformExportService
         return $finalTitle;
     }
 }
+

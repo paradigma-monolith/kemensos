@@ -580,6 +580,9 @@ class UniformExcelImportService
 
                 $rawVal = $worksheet->getCell("{$colLetter}{$r}")->getValue();
                 $val = $this->sanitizeValue($rawVal, $type);
+                if ($key === 'jenis_kelamin' && $val !== null) {
+                    $val = self::normalizeGender($val);
+                }
 
                 if ($group) {
                     $record[$group][$key] = $val;
@@ -667,6 +670,21 @@ class UniformExcelImportService
         }
 
         return $resolved;
+    }
+
+    /**
+     * Normalize gender input strings to standard 'L' or 'P'.
+     */
+    public static function normalizeGender(?string $val): string
+    {
+        $v = strtoupper(trim((string)$val));
+        if ($v === 'P' || str_starts_with($v, 'PEREM') || str_starts_with($v, 'WANITA') || $v === 'FEMALE' || $v === 'F') {
+            return 'P';
+        }
+        if ($v === 'L' || str_starts_with($v, 'LAKI') || str_starts_with($v, 'PRIA') || $v === 'MALE' || $v === 'M') {
+            return 'L';
+        }
+        return $v ?: 'L';
     }
 
     /**
@@ -805,7 +823,7 @@ class UniformExcelImportService
                         'sheet_name' => $sheetName,
                         'nomor_urut' => isset($row['no']) && is_numeric($row['no']) ? (int)$row['no'] : null,
                         'nama_lengkap' => $row['nama_lengkap'] ?? '',
-                        'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
+                        'jenis_kelamin' => self::normalizeGender($row['jenis_kelamin'] ?? null),
                         'jenjang' => $row['jenjang'] ?? null,
                         'status' => $row['status'] ?? null,
                         'lingkar_badan_cm' => isset($row['atasan']['lingkar_badan_cm']) && is_numeric($row['atasan']['lingkar_badan_cm']) ? (float)$row['atasan']['lingkar_badan_cm'] : null,
