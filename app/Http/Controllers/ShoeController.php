@@ -225,7 +225,7 @@ class ShoeController extends Controller
         // 5. Import Batches
         $batches = ShoeImportBatch::with(['school:id,nama_sekolah,pic_nama', 'user:id,name'])
             ->latest()
-            ->paginate(10, ['*'], 'batch_page')
+            ->paginate(15, ['*'], 'batch_page')
             ->withQueryString();
 
         $tab = $request->input('tab');

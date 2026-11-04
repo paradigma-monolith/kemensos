@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
 import {
@@ -71,6 +71,10 @@ const selectedFileName = ref('');
 const selectedPicOption = ref('');
 const customPicName = ref('');
 
+// Pagination state: Maximum 15 rows per page
+const perPage = ref(15);
+const currentPage = ref(1);
+
 // Form for Inertia file upload
 const uploadForm = useForm({
   file: null,
@@ -96,8 +100,13 @@ const fileName = computed(() => props.initialRecap?.file_name || '-');
 const picNama = computed(() => props.initialRecap?.pic_nama || null);
 const totalRows = computed(() => props.initialRecap?.total_rows || 0);
 
-// Active sheet data
-const activeSheetRows = computed(() => {
+// Reset current page when active tab or filters change
+watch([activeTab, searchQuery, filterGender], () => {
+  currentPage.value = 1;
+});
+
+// All filtered rows for current active tab
+const filteredRows = computed(() => {
   const sheetData = currentRecap.value[activeTab.value]?.data || [];
   return sheetData.filter((row) => {
     const matchesSearch = !searchQuery.value || 
@@ -109,6 +118,65 @@ const activeSheetRows = computed(() => {
 
     return matchesSearch && matchesGender;
   });
+});
+
+const totalFiltered = computed(() => filteredRows.value.length);
+const totalPages = computed(() => Math.ceil(totalFiltered.value / perPage.value) || 1);
+
+const fromIndex = computed(() => {
+  if (totalFiltered.value === 0) return 0;
+  return (currentPage.value - 1) * perPage.value + 1;
+});
+
+const toIndex = computed(() => {
+  return Math.min(currentPage.value * perPage.value, totalFiltered.value);
+});
+
+// Paginated rows: maximum 15 per page
+const paginatedSheetRows = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value;
+  return filteredRows.value.slice(start, start + perPage.value);
+});
+
+// Smart pagination buttons generator (with delta, first/last, and ellipsis '...')
+const paginationLinks = computed(() => {
+  const current = currentPage.value;
+  const last = totalPages.value;
+  const delta = 2;
+
+  if (last <= 1) return [];
+
+  const range = [];
+  const rangeWithDots = [];
+
+  for (let i = 1; i <= last; i++) {
+    if (
+      i === 1 || 
+      i === last || 
+      i === 2 || 
+      i === last - 1 || 
+      (current <= 6 && i <= 10) ||
+      (current >= last - 5 && i >= last - 9) ||
+      (i >= current - delta && i <= current + delta)
+    ) {
+      range.push(i);
+    }
+  }
+
+  let l;
+  for (const i of range) {
+    if (l) {
+      if (i - l === 2) {
+        rangeWithDots.push(l + 1);
+      } else if (i - l !== 1) {
+        rangeWithDots.push('...');
+      }
+    }
+    rangeWithDots.push(i);
+    l = i;
+  }
+
+  return rangeWithDots;
 });
 
 // JSON representation matching exact required output
@@ -388,13 +456,16 @@ const downloadJson = () => {
             <h2 class="text-base font-bold text-slate-900 dark:text-white">
               Data Sheet: {{ activeTab }}
             </h2>
-            <span v-if="activeTab === 'GURU BARU'" class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
-              *Sheet GURU tunggal otomatis dipetakan ke sini
+            <span class="text-xs px-2.5 py-0.5 rounded-full font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+              {{ totalFiltered }} penerima (Maks. {{ perPage }} / hal)
             </span>
-            <span v-if="activeTab === 'TENDIK BARU'" class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
-              *Sheet TENDIK tunggal otomatis dipetakan ke sini
+            <span v-if="activeTab === 'GURU BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
+              *Sheet GURU tunggal otomatis masuk ke sini
             </span>
-            <span v-if="activeTab === 'SATPAM'" class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800/60">
+            <span v-if="activeTab === 'TENDIK BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
+              *Sheet TENDIK tunggal otomatis masuk ke sini
+            </span>
+            <span v-if="activeTab === 'SATPAM'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800/60">
               *Dilengkapi Ukuran Sepatu PDH
             </span>
           </div>
@@ -466,12 +537,12 @@ const downloadJson = () => {
 
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800/70">
               <tr
-                v-for="(row, idx) in activeSheetRows"
+                v-for="(row, idx) in paginatedSheetRows"
                 :key="idx"
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
               >
                 <td class="py-2 px-3 text-center font-mono text-slate-500 dark:text-slate-400">
-                  {{ row.no ?? idx + 1 }}
+                  {{ row.no ?? (fromIndex + idx) }}
                 </td>
 
                 <td class="py-2 px-4 font-medium text-slate-900 dark:text-white">
@@ -534,7 +605,7 @@ const downloadJson = () => {
               </tr>
 
               <!-- Empty State -->
-              <tr v-if="activeSheetRows.length === 0">
+              <tr v-if="filteredRows.length === 0">
                 <td :colspan="activeTab === 'SATPAM' ? 11 : 10" class="py-12 text-center text-slate-400 dark:text-slate-500">
                   <div class="flex flex-col items-center justify-center gap-2">
                     <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
@@ -545,6 +616,53 @@ const downloadJson = () => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Pagination Controls Matching Exact User Design -->
+        <div v-if="totalFiltered > 0" class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 border-t border-slate-200/80 dark:border-slate-800/80 text-xs bg-slate-50/50 dark:bg-slate-900/50">
+          <!-- Text Info -->
+          <div class="text-slate-500 dark:text-slate-400">
+            Menampilkan <span class="font-semibold text-slate-700 dark:text-slate-200">{{ fromIndex }}</span> - <span class="font-semibold text-slate-700 dark:text-slate-200">{{ toIndex }}</span> dari <span class="font-semibold text-slate-700 dark:text-slate-200">{{ totalFiltered }}</span> penerima
+          </div>
+
+          <!-- Page Navigation Buttons -->
+          <div v-if="totalPages > 1" class="flex items-center gap-1 flex-wrap justify-center">
+            <!-- Previous Button -->
+            <button
+              type="button"
+              :disabled="currentPage === 1"
+              @click="currentPage = Math.max(1, currentPage - 1)"
+              class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              &laquo; Previous
+            </button>
+
+            <!-- Page Number Buttons & Ellipsis -->
+            <template v-for="(item, idx) in paginationLinks" :key="idx">
+              <span v-if="item === '...'" class="px-2 py-1.5 text-slate-400 font-medium">...</span>
+              <button
+                v-else
+                type="button"
+                @click="currentPage = item"
+                class="min-w-[34px] px-2.5 py-1.5 rounded-lg border font-semibold transition-all cursor-pointer text-center"
+                :class="currentPage === item 
+                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
+              >
+                {{ item }}
+              </button>
+            </template>
+
+            <!-- Next Button -->
+            <button
+              type="button"
+              :disabled="currentPage === totalPages"
+              @click="currentPage = Math.min(totalPages, currentPage + 1)"
+              class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              Next &raquo;
+            </button>
+          </div>
         </div>
       </div>
 
