@@ -19,7 +19,8 @@ import {
   Sparkles,
   Info,
   X,
-  Footprints
+  Footprints,
+  UserCheck
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -28,6 +29,7 @@ const props = defineProps({
     default: () => ({
       school_name: null,
       file_name: null,
+      pic_nama: null,
       header_rows: [1, 2],
       data_start_row: 3,
       total_rows: 0,
@@ -39,6 +41,22 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  picList: {
+    type: Array,
+    default: () => [
+      'AZRIEL',
+      'WENDY',
+      'ADIL',
+      'AYU',
+      'DWI',
+      'IKHSAN dan TRI',
+      'INDRA',
+      'RAHAYU',
+      'MIFTAH',
+      'RIVALDI',
+      'YUPITA',
+    ],
+  },
 });
 
 const activeTab = ref('SISWA');
@@ -49,9 +67,14 @@ const isCopied = ref(false);
 const fileInput = ref(null);
 const selectedFileName = ref('');
 
+// PIC Selection state
+const selectedPicOption = ref('');
+const customPicName = ref('');
+
 // Form for Inertia file upload
 const uploadForm = useForm({
   file: null,
+  pic_nama: '',
 });
 
 const sheetsList = [
@@ -70,6 +93,7 @@ const sheetsList = [
 const currentRecap = computed(() => props.initialRecap?.recapitulation || {});
 const schoolName = computed(() => props.initialRecap?.school_name || 'Belum Ada Berkas Diimpor');
 const fileName = computed(() => props.initialRecap?.file_name || '-');
+const picNama = computed(() => props.initialRecap?.pic_nama || null);
 const totalRows = computed(() => props.initialRecap?.total_rows || 0);
 
 // Active sheet data
@@ -110,12 +134,22 @@ const handleFileChange = (e) => {
 const submitUpload = () => {
   if (!uploadForm.file) return;
 
+  let finalPic = selectedPicOption.value;
+  if (finalPic === '__custom__') {
+    finalPic = customPicName.value ? customPicName.value.trim() : '';
+  } else if (finalPic === '__auto__') {
+    finalPic = '';
+  }
+  uploadForm.pic_nama = finalPic;
+
   uploadForm.post('/uniforms/parse', {
     preserveScroll: true,
     onSuccess: () => {
       isUploadModalOpen.value = false;
       uploadForm.reset();
       selectedFileName.value = '';
+      selectedPicOption.value = '';
+      customPicName.value = '';
     },
   });
 };
@@ -222,8 +256,8 @@ const downloadJson = () => {
         </div>
       </div>
 
-      <!-- Overview Metric Cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Overview Metric Cards (5 Cards) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <!-- School Card -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
           <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -231,11 +265,31 @@ const downloadJson = () => {
             <SchoolIcon class="w-4 h-4 text-indigo-500" />
           </div>
           <div class="mt-2">
-            <span class="text-lg font-bold text-slate-900 dark:text-white truncate block" :title="schoolName">
+            <span class="text-base font-bold text-slate-900 dark:text-white truncate block" :title="schoolName">
               {{ schoolName }}
             </span>
-            <span class="text-xs text-indigo-600 dark:text-indigo-400 font-mono mt-0.5 block">
-              Dimulai dari SRD / SRMP / SRMA
+            <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-mono mt-0.5 block">
+              Awalan SRD / SRMP / SRMA
+            </span>
+          </div>
+        </div>
+
+        <!-- PIC Card -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span>Penanggung Jawab (PIC)</span>
+            <UserCheck class="w-4 h-4 text-emerald-500" />
+          </div>
+          <div class="mt-2">
+            <span v-if="picNama" class="text-base font-bold text-slate-900 dark:text-white truncate block flex items-center gap-1.5" :title="picNama">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+              {{ picNama }}
+            </span>
+            <span v-else class="text-sm text-slate-400 italic block">
+              Belum ditentukan
+            </span>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+              {{ picNama ? 'PIC Terkonfirmasi' : 'Pilih saat import' }}
             </span>
           </div>
         </div>
@@ -250,8 +304,8 @@ const downloadJson = () => {
             <span class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate block font-mono" :title="fileName">
               {{ fileName }}
             </span>
-            <span class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block">
-              Header: Baris 1-2 | Data: Mulai Baris 3
+            <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+              Header 1-2 | Data Baris 3
             </span>
           </div>
         </div>
@@ -280,7 +334,7 @@ const downloadJson = () => {
             <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
               9
             </span>
-            <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori Terdefinisi</span>
+            <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori</span>
           </div>
         </div>
       </div>
@@ -557,6 +611,52 @@ const downloadJson = () => {
         </div>
 
         <form @submit.prevent="submitUpload" class="mt-6 space-y-4">
+          <!-- Pilihan Dropdown PIC (Penanggung Jawab) -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <UserCheck class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Penanggung Jawab / Nama PIC:</span>
+                <span class="text-rose-500">*</span>
+              </label>
+              <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60">
+                Folder PIC
+              </span>
+            </div>
+
+            <div class="relative">
+              <select
+                v-model="selectedPicOption"
+                class="w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer"
+              >
+                <option value="" disabled>-- Silakan Pilih Nama PIC Pengumpul Berkas --</option>
+                <optgroup label="Daftar Nama PIC Resmi Kemensos / Sekolah Rakyat">
+                  <option v-for="pic in picList" :key="pic" :value="pic">
+                    👤 {{ pic }}
+                  </option>
+                </optgroup>
+                <optgroup label="Opsi Khusus">
+                  <option value="__custom__">✏️ Tulis Nama PIC Manual...</option>
+                  <option value="__auto__">📄 Ambil Otomatis dari Lembar Konfirmasi Excel</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Input Manual jika memilih Custom -->
+            <div v-if="selectedPicOption === '__custom__'" class="pt-1">
+              <input
+                v-model="customPicName"
+                type="text"
+                placeholder="Ketikkan nama PIC lengkap (contoh: YULIA)..."
+                class="w-full px-3.5 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
+              />
+            </div>
+
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">
+              Setiap data ukuran seragam yang di-import pada proses ini akan ditugaskan ke PIC yang dipilih.
+            </p>
+          </div>
+
           <!-- Dropzone -->
           <div
             @click="$refs.fileInput.click()"

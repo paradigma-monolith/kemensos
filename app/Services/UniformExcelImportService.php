@@ -343,17 +343,22 @@ class UniformExcelImportService
     }
 
     /**
-     * Parse Excel file and return metadata (school name, filename, summary counts) + full recapitulation.
+     * Parse Excel file and return metadata (school name, PIC, filename, summary counts) + full recapitulation.
      *
      * @param string $filePath
      * @param string|null $originalName
+     * @param string|null $selectedPic
      * @return array
      */
-    public function parseWithMetadata(string $filePath, ?string $originalName = null): array
+    public function parseWithMetadata(string $filePath, ?string $originalName = null, ?string $selectedPic = null): array
     {
-        $effectiveName = $originalName ?? basename($filePath);
+        $realPath = $this->resolvePath($filePath);
+        $effectiveName = $originalName ?? basename($realPath);
         $schoolName = $this->extractSchoolName($effectiveName);
-        $recap = $this->parse($filePath, $effectiveName);
+        $recap = $this->parse($realPath, $effectiveName);
+
+        // Normalize or extract PIC name
+        $finalPic = !empty($selectedPic) ? trim(preg_replace('/^PIC\s*[:\-]?\s*/i', '', trim($selectedPic))) : $this->extractPicFromSpreadsheet($realPath);
 
         $totalRows = 0;
         $sheetCounts = [];
@@ -366,12 +371,51 @@ class UniformExcelImportService
         return [
             'school_name' => $schoolName,
             'file_name' => $effectiveName,
+            'pic_nama' => $finalPic,
             'header_rows' => [1, 2],
             'data_start_row' => 3,
             'total_rows' => $totalRows,
             'sheet_counts' => $sheetCounts,
             'recapitulation' => $recap,
         ];
+    }
+
+    /**
+     * Attempt to extract PIC / Petugas Ukur name directly from spreadsheet cells.
+     */
+    public function extractPicFromSpreadsheet(string $filePath): ?string
+    {
+        try {
+            $spreadsheet = IOFactory::load($filePath);
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $highestRow = min(50, $sheet->getHighestRow());
+                for ($r = 10; $r <= $highestRow; $r++) {
+                    $rowVals = $sheet->rangeToArray("A{$r}:J{$r}")[0];
+                    foreach ($rowVals as $colIdx => $rawVal) {
+                        $val = trim((string)$rawVal);
+                        if (empty($val)) continue;
+
+                        if (str_contains($val, 'Petugas Ukur') || str_contains($val, 'PIC')) {
+                            $aboveRow = $r - 1;
+                            $colLetter = Coordinate::stringFromColumnIndex($colIdx + 1);
+                            $candidate = trim((string)$sheet->getCell("{$colLetter}{$aboveRow}")->getValue());
+                            if (!empty($candidate)) {
+                                return trim(preg_replace('/^PIC\s*[:\-]?\s*/i', '', $candidate));
+                            }
+                        }
+                    }
+                }
+
+                $b24 = trim((string)$sheet->getCell('B24')->getValue());
+                if (!empty($b24) && !str_contains($b24, '(') && !str_contains($b24, 'Mengetahui')) {
+                    return trim(preg_replace('/^PIC\s*[:\-]?\s*/i', '', $b24));
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignore extraction errors and fallback to null
+        }
+
+        return null;
     }
 
     /**

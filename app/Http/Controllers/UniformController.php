@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\School;
 use App\Services\UniformExcelImportService;
 use Exception;
 use Illuminate\Http\Request;
@@ -30,10 +31,22 @@ class UniformController extends Controller
 
         $sessionRecap = session('uniform_recap');
 
+        // Master PIC list combining default constant and any existing database values
+        $existingPics = School::whereNotNull('pic_nama')
+            ->where('pic_nama', '!=', '')
+            ->distinct()
+            ->pluck('pic_nama')
+            ->map(fn($p) => School::normalizePicName($p))
+            ->filter()
+            ->toArray();
+        $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
+        sort($allPics);
+
         return Inertia::render('Uniforms/Index', [
             'initialRecap' => $sessionRecap ?? [
                 'school_name' => null,
                 'file_name' => null,
+                'pic_nama' => null,
                 'header_rows' => [1, 2],
                 'data_start_row' => 3,
                 'total_rows' => 0,
@@ -41,6 +54,7 @@ class UniformController extends Controller
                 'recapitulation' => $initialData,
             ],
             'schema' => $schema,
+            'picList' => $allPics,
         ]);
     }
 
@@ -53,6 +67,7 @@ class UniformController extends Controller
             'file' => 'nullable|file|max:51200',
             'excel_file' => 'nullable|file|max:51200',
             'file_path' => 'nullable|string',
+            'pic_nama' => 'nullable|string|max:100',
             'metadata' => 'nullable|boolean',
         ]);
 
@@ -76,8 +91,10 @@ class UniformController extends Controller
             return back()->withErrors(['file' => 'Berkas Excel wajib diunggah.']);
         }
 
+        $selectedPic = School::normalizePicName($request->input('pic_nama'));
+
         try {
-            $resultWithMeta = $this->uniformService->parseWithMetadata($tempPath, $originalName);
+            $resultWithMeta = $this->uniformService->parseWithMetadata($tempPath, $originalName, $selectedPic);
 
             if ($request->wantsJson() || $request->is('api/*')) {
                 if ($request->boolean('metadata')) {
@@ -86,9 +103,11 @@ class UniformController extends Controller
                 return response()->json($resultWithMeta['recapitulation']);
             }
 
+            $picInfo = $resultWithMeta['pic_nama'] ? " (PIC: {$resultWithMeta['pic_nama']})" : "";
+
             return redirect()->route('uniforms.index')
                 ->with('uniform_recap', $resultWithMeta)
-                ->with('success', "Data ukuran seragam untuk {$resultWithMeta['school_name']} berhasil diimpor ({$resultWithMeta['total_rows']} baris data teridentifikasi).");
+                ->with('success', "Data ukuran seragam untuk {$resultWithMeta['school_name']}{$picInfo} berhasil diimpor ({$resultWithMeta['total_rows']} baris data teridentifikasi).");
         } catch (Exception $e) {
             if ($request->wantsJson() || $request->is('api/*')) {
                 return response()->json([
