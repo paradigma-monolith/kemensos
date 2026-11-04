@@ -197,6 +197,129 @@ class UniformController extends Controller
             ];
         }
 
+        // Aggregate counts by sheet and gender across matching batches
+        $matchingBatchIds = (clone $statsBatchQuery)->pluck('id')->toArray();
+        $sheetCountsMap = [];
+        if (!empty($matchingBatchIds)) {
+            $recipientCountsBySheet = UniformRecipient::whereIn('batch_id', $matchingBatchIds)
+                ->selectRaw('sheet_name, jenis_kelamin, COUNT(*) as total')
+                ->groupBy('sheet_name', 'jenis_kelamin')
+                ->get();
+
+            foreach ($recipientCountsBySheet as $row) {
+                $sName = $row->sheet_name;
+                $jk = $row->jenis_kelamin;
+                if (!isset($sheetCountsMap[$sName])) {
+                    $sheetCountsMap[$sName] = ['total' => 0, 'pria' => 0, 'wanita' => 0];
+                }
+                $sheetCountsMap[$sName]['total'] += (int)$row->total;
+                if ($jk === 'L') {
+                    $sheetCountsMap[$sName]['pria'] += (int)$row->total;
+                } elseif ($jk === 'P') {
+                    $sheetCountsMap[$sName]['wanita'] += (int)$row->total;
+                }
+            }
+        }
+
+        // Fallback aggregation from activeRecap if matching batches query has no database rows
+        if (empty($sheetCountsMap) && !empty($activeRecap['recapitulation'])) {
+            foreach ($activeRecap['recapitulation'] as $sheetName => $sData) {
+                $sheetCountsMap[$sheetName] = ['total' => 0, 'pria' => 0, 'wanita' => 0];
+                foreach ($sData['data'] ?? [] as $r) {
+                    $sheetCountsMap[$sheetName]['total']++;
+                    if (($r['jenis_kelamin'] ?? '') === 'L') {
+                        $sheetCountsMap[$sheetName]['pria']++;
+                    } elseif (($r['jenis_kelamin'] ?? '') === 'P') {
+                        $sheetCountsMap[$sheetName]['wanita']++;
+                    }
+                }
+            }
+        }
+
+        // Staff stats separated by exact sheet
+        $staffStats = [
+            'kepsek' => [
+                'sheet' => 'KEPSEK',
+                'label' => 'Kepala Sekolah',
+                'badge' => 'KEPSEK',
+                'sublabel' => 'Sheet KEPSEK',
+                'color' => 'amber',
+                'total' => $sheetCountsMap['KEPSEK']['total'] ?? (int)$statsBatchQuery->sum('total_kepsek'),
+                'pria' => $sheetCountsMap['KEPSEK']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['KEPSEK']['wanita'] ?? 0,
+            ],
+            'guru_lama' => [
+                'sheet' => 'GURU LAMA',
+                'label' => 'Guru Lama',
+                'badge' => 'GURU LAMA',
+                'sublabel' => 'Sheet GURU LAMA',
+                'color' => 'sky',
+                'total' => $sheetCountsMap['GURU LAMA']['total'] ?? (int)$statsBatchQuery->sum('total_guru_lama'),
+                'pria' => $sheetCountsMap['GURU LAMA']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['GURU LAMA']['wanita'] ?? 0,
+            ],
+            'guru_baru' => [
+                'sheet' => 'GURU BARU',
+                'label' => 'Guru Baru',
+                'badge' => 'GURU BARU',
+                'sublabel' => 'Sheet GURU / BARU',
+                'color' => 'indigo',
+                'total' => $sheetCountsMap['GURU BARU']['total'] ?? (int)$statsBatchQuery->sum('total_guru_baru'),
+                'pria' => $sheetCountsMap['GURU BARU']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['GURU BARU']['wanita'] ?? 0,
+            ],
+            'tendik_lama' => [
+                'sheet' => 'TENDIK LAMA',
+                'label' => 'Tendik Lama',
+                'badge' => 'TENDIK LAMA',
+                'sublabel' => 'Sheet TENDIK LAMA',
+                'color' => 'emerald',
+                'total' => $sheetCountsMap['TENDIK LAMA']['total'] ?? (int)$statsBatchQuery->sum('total_tendik_lama'),
+                'pria' => $sheetCountsMap['TENDIK LAMA']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['TENDIK LAMA']['wanita'] ?? 0,
+            ],
+            'tendik_baru' => [
+                'sheet' => 'TENDIK BARU',
+                'label' => 'Tendik Baru',
+                'badge' => 'TENDIK BARU',
+                'sublabel' => 'Sheet TENDIK / BARU',
+                'color' => 'teal',
+                'total' => $sheetCountsMap['TENDIK BARU']['total'] ?? (int)$statsBatchQuery->sum('total_tendik_baru'),
+                'pria' => $sheetCountsMap['TENDIK BARU']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['TENDIK BARU']['wanita'] ?? 0,
+            ],
+            'satpam' => [
+                'sheet' => 'SATPAM',
+                'label' => 'Satpam (PDH)',
+                'badge' => 'SATPAM',
+                'sublabel' => 'Sheet SATPAM (+PDH)',
+                'color' => 'purple',
+                'total' => $sheetCountsMap['SATPAM']['total'] ?? (int)$statsBatchQuery->sum('total_satpam'),
+                'pria' => $sheetCountsMap['SATPAM']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['SATPAM']['wanita'] ?? 0,
+            ],
+            'kebersihan' => [
+                'sheet' => 'PETUGAS KEBERSIHAN',
+                'label' => 'Petugas Kebersihan',
+                'badge' => 'KEBERSIHAN',
+                'sublabel' => 'Sheet KEBERSIHAN',
+                'color' => 'rose',
+                'total' => $sheetCountsMap['PETUGAS KEBERSIHAN']['total'] ?? (int)$statsBatchQuery->sum('total_kebersihan'),
+                'pria' => $sheetCountsMap['PETUGAS KEBERSIHAN']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['PETUGAS KEBERSIHAN']['wanita'] ?? 0,
+            ],
+            'dapur' => [
+                'sheet' => 'PETUGAS DAPUR',
+                'label' => 'Petugas Dapur',
+                'badge' => 'DAPUR',
+                'sublabel' => 'Sheet DAPUR',
+                'color' => 'orange',
+                'total' => $sheetCountsMap['PETUGAS DAPUR']['total'] ?? (int)$statsBatchQuery->sum('total_dapur'),
+                'pria' => $sheetCountsMap['PETUGAS DAPUR']['pria'] ?? 0,
+                'wanita' => $sheetCountsMap['PETUGAS DAPUR']['wanita'] ?? 0,
+            ],
+        ];
+
         // Determine active primary tab (recap | batches)
         $tab = $request->input('tab');
         if (!$tab) {
@@ -221,6 +344,7 @@ class UniformController extends Controller
                 'total_schools' => $totalSchools,
                 'total_batches' => $totalBatches,
                 'sheet_stats' => $sheetStats,
+                'staff_stats' => $staffStats,
             ],
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,

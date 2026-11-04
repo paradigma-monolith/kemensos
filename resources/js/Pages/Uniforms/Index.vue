@@ -27,7 +27,8 @@ import {
   Eye,
   FileUp,
   Calendar,
-  MapPin
+  MapPin,
+  Briefcase
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -86,6 +87,7 @@ const props = defineProps({
         srmp: { total: 0, pria: 0, wanita: 0 },
         srma: { total: 0, pria: 0, wanita: 0 },
       },
+      staff_stats: {},
     }),
   },
   filters: {
@@ -156,7 +158,7 @@ const selectedPic = ref(props.filters.pic || '');
 const search = ref(props.filters.search || '');
 
 // Sheet sub-tab in recap mode
-const activeTab = ref('SISWA');
+const activeTab = ref(props.filters.kategori ? props.filters.kategori : 'SISWA');
 const isUploadModalOpen = ref(false);
 const isSyncing = ref(false);
 const isCopied = ref(false);
@@ -202,6 +204,179 @@ const fileName = computed(() => props.initialRecap?.file_name || '-');
 const picNama = computed(() => props.initialRecap?.pic_nama || null);
 const totalRows = computed(() => props.initialRecap?.total_rows || 0);
 
+// Sheet counts
+const getSheetCount = (sheetKey) => {
+  return currentRecap.value[sheetKey]?.data?.length || 0;
+};
+
+// Gender breakdown counts for current sheet in view
+const getSheetGenderCounts = (sheetKey) => {
+  const data = currentRecap.value[sheetKey]?.data || [];
+  let pria = 0;
+  let wanita = 0;
+  for (const r of data) {
+    if (r.jenis_kelamin === 'L') pria++;
+    else if (r.jenis_kelamin === 'P') wanita++;
+  }
+  return { pria, wanita };
+};
+
+// Detailed Staff Card List Separated Sesuai Sheet
+const staffCardList = computed(() => {
+  const staff = props.stats?.staff_stats || {};
+  return [
+    {
+      key: 'kepsek',
+      sheet: 'KEPSEK',
+      label: 'Kepala Sekolah',
+      badge: 'KEPSEK',
+      sublabel: 'Sheet *KEPSEK*',
+      color: 'amber',
+      icon: SchoolIcon,
+      total: staff.kepsek?.total ?? getSheetCount('KEPSEK'),
+      pria: staff.kepsek?.pria ?? getSheetGenderCounts('KEPSEK').pria,
+      wanita: staff.kepsek?.wanita ?? getSheetGenderCounts('KEPSEK').wanita,
+    },
+    {
+      key: 'guru_lama',
+      sheet: 'GURU LAMA',
+      label: 'Guru Lama',
+      badge: 'GURU LAMA',
+      sublabel: 'Sheet *GURU LAMA*',
+      color: 'sky',
+      icon: Users,
+      total: staff.guru_lama?.total ?? getSheetCount('GURU LAMA'),
+      pria: staff.guru_lama?.pria ?? getSheetGenderCounts('GURU LAMA').pria,
+      wanita: staff.guru_lama?.wanita ?? getSheetGenderCounts('GURU LAMA').wanita,
+    },
+    {
+      key: 'guru_baru',
+      sheet: 'GURU BARU',
+      label: 'Guru Baru',
+      badge: 'GURU BARU',
+      sublabel: 'Sheet *GURU / BARU*',
+      color: 'indigo',
+      icon: Users,
+      total: staff.guru_baru?.total ?? getSheetCount('GURU BARU'),
+      pria: staff.guru_baru?.pria ?? getSheetGenderCounts('GURU BARU').pria,
+      wanita: staff.guru_baru?.wanita ?? getSheetGenderCounts('GURU BARU').wanita,
+    },
+    {
+      key: 'tendik_lama',
+      sheet: 'TENDIK LAMA',
+      label: 'Tendik Lama',
+      badge: 'TENDIK LAMA',
+      sublabel: 'Sheet *TENDIK LAMA*',
+      color: 'emerald',
+      icon: Users,
+      total: staff.tendik_lama?.total ?? getSheetCount('TENDIK LAMA'),
+      pria: staff.tendik_lama?.pria ?? getSheetGenderCounts('TENDIK LAMA').pria,
+      wanita: staff.tendik_lama?.wanita ?? getSheetGenderCounts('TENDIK LAMA').wanita,
+    },
+    {
+      key: 'tendik_baru',
+      sheet: 'TENDIK BARU',
+      label: 'Tendik Baru',
+      badge: 'TENDIK BARU',
+      sublabel: 'Sheet *TENDIK / BARU*',
+      color: 'teal',
+      icon: Users,
+      total: staff.tendik_baru?.total ?? getSheetCount('TENDIK BARU'),
+      pria: staff.tendik_baru?.pria ?? getSheetGenderCounts('TENDIK BARU').pria,
+      wanita: staff.tendik_baru?.wanita ?? getSheetGenderCounts('TENDIK BARU').wanita,
+    },
+    {
+      key: 'satpam',
+      sheet: 'SATPAM',
+      label: 'Satpam (PDH)',
+      badge: 'SATPAM',
+      sublabel: 'Sheet *SATPAM (+PDH)*',
+      color: 'purple',
+      icon: Footprints,
+      total: staff.satpam?.total ?? getSheetCount('SATPAM'),
+      pria: staff.satpam?.pria ?? getSheetGenderCounts('SATPAM').pria,
+      wanita: staff.satpam?.wanita ?? getSheetGenderCounts('SATPAM').wanita,
+    },
+    {
+      key: 'kebersihan',
+      sheet: 'PETUGAS KEBERSIHAN',
+      label: 'Petugas Kebersihan',
+      badge: 'KEBERSIHAN',
+      sublabel: 'Sheet *KEBERSIHAN*',
+      color: 'rose',
+      icon: Users,
+      total: staff.kebersihan?.total ?? getSheetCount('PETUGAS KEBERSIHAN'),
+      pria: staff.kebersihan?.pria ?? getSheetGenderCounts('PETUGAS KEBERSIHAN').pria,
+      wanita: staff.kebersihan?.wanita ?? getSheetGenderCounts('PETUGAS KEBERSIHAN').wanita,
+    },
+    {
+      key: 'dapur',
+      sheet: 'PETUGAS DAPUR',
+      label: 'Petugas Dapur',
+      badge: 'DAPUR',
+      sublabel: 'Sheet *PETUGAS DAPUR*',
+      color: 'orange',
+      icon: Users,
+      total: staff.dapur?.total ?? getSheetCount('PETUGAS DAPUR'),
+      pria: staff.dapur?.pria ?? getSheetGenderCounts('PETUGAS DAPUR').pria,
+      wanita: staff.dapur?.wanita ?? getSheetGenderCounts('PETUGAS DAPUR').wanita,
+    },
+  ];
+});
+
+// Card active/theme color classes helper
+const getStaffCardClasses = (color, isSelected) => {
+  const styles = {
+    amber: {
+      active: 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/30',
+      badge: 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    },
+    sky: {
+      active: 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 ring-2 ring-sky-500/30',
+      badge: 'bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+    },
+    indigo: {
+      active: 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-500/30',
+      badge: 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    },
+    emerald: {
+      active: 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-500/30',
+      badge: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    },
+    teal: {
+      active: 'bg-teal-50 dark:bg-teal-950/60 border-teal-400 dark:border-teal-600 ring-2 ring-teal-500/30',
+      badge: 'bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800',
+    },
+    purple: {
+      active: 'bg-purple-50 dark:bg-purple-950/60 border-purple-400 dark:border-purple-600 ring-2 ring-purple-500/30',
+      badge: 'bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+    },
+    rose: {
+      active: 'bg-rose-50 dark:bg-rose-950/60 border-rose-400 dark:border-rose-600 ring-2 ring-rose-500/30',
+      badge: 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+    },
+    orange: {
+      active: 'bg-orange-50 dark:bg-orange-950/60 border-orange-400 dark:border-orange-600 ring-2 ring-orange-500/30',
+      badge: 'bg-orange-100 dark:bg-orange-900/60 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+    },
+  };
+  const c = styles[color] || styles.indigo;
+  return isSelected
+    ? c.active
+    : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-slate-400 dark:hover:border-slate-600';
+};
+
+// Filter by clicking on a staff card
+const filterByStaffSheet = (sheetName) => {
+  if (activeTab.value === sheetName && selectedKategori.value === sheetName) {
+    selectedKategori.value = '';
+  } else {
+    selectedKategori.value = sheetName;
+    activeTab.value = sheetName;
+  }
+  primaryTab.value = 'recap';
+};
+
 // Reset current page when active tab or filters change
 watch([activeTab, search, selectedGender], () => {
   currentPage.value = 1;
@@ -210,20 +385,7 @@ watch([activeTab, search, selectedGender], () => {
 // Sync category selection with activeTab
 watch(selectedKategori, (newKat) => {
   if (!newKat) return;
-  const katMap = {
-    siswa: 'SISWA',
-    kepsek: 'KEPSEK',
-    guru: 'GURU BARU',
-    guru_lama: 'GURU LAMA',
-    tendik: 'TENDIK BARU',
-    tendik_lama: 'TENDIK LAMA',
-    satpam: 'SATPAM',
-    kebersihan: 'PETUGAS KEBERSIHAN',
-    dapur: 'PETUGAS DAPUR',
-  };
-  if (katMap[newKat]) {
-    activeTab.value = katMap[newKat];
-  }
+  activeTab.value = newKat;
 });
 
 // All filtered rows for current active tab
@@ -342,11 +504,6 @@ const resetFilters = () => {
 const formattedJson = computed(() => {
   return JSON.stringify(currentRecap.value, null, 2);
 });
-
-// Sheet counts
-const getSheetCount = (sheetKey) => {
-  return currentRecap.value[sheetKey]?.data?.length || 0;
-};
 
 // Handle files selection
 const handleFileChange = (e) => {
@@ -558,9 +715,9 @@ const syncAllFromStorage = () => {
         </div>
       </div>
 
-      <!-- ========================================== -->
-      <!-- JENJANG QUICK STATS (SRD • SRMP • SRMA)    -->
-      <!-- ========================================== -->
+      <!-- ============================================================ -->
+      <!-- BAGIAN 1: REKAPITULASI SISWA BERDASARKAN JENJANG (SRD, SRMP, SRMA) -->
+      <!-- ============================================================ -->
       <div v-if="stats.sheet_stats" class="space-y-3">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div class="flex items-center gap-2">
@@ -568,7 +725,7 @@ const syncAllFromStorage = () => {
               <Layers class="w-3.5 h-3.5" />
             </span>
             <h3 class="text-sm font-bold text-slate-900 dark:text-white">
-              Rekapitulasi Kebutuhan Seragam Berdasarkan Jenjang Sekolah
+              Rekapitulasi Kebutuhan Seragam Siswa Berdasarkan Jenjang Sekolah
             </h3>
             <span class="text-[11px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline">
               (SRD • SRMP • SRMA)
@@ -581,7 +738,7 @@ const syncAllFromStorage = () => {
           </span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <!-- Card SRD (Sekolah Dasar) -->
           <div
             @click="filterByJenjang('SRD')"
@@ -605,7 +762,7 @@ const syncAllFromStorage = () => {
                 <span class="text-xs font-normal text-slate-500">seragam</span>
               </div>
               <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                {{ stats.total_penerima > 0 ? Math.round(((stats.sheet_stats.srd?.total || 0) / stats.total_penerima) * 100) : 0 }}% Total
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srd?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
               </span>
             </div>
             <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
@@ -638,7 +795,7 @@ const syncAllFromStorage = () => {
                 <span class="text-xs font-normal text-slate-500">seragam</span>
               </div>
               <span class="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono">
-                {{ stats.total_penerima > 0 ? Math.round(((stats.sheet_stats.srmp?.total || 0) / stats.total_penerima) * 100) : 0 }}% Total
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srmp?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
               </span>
             </div>
             <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
@@ -671,7 +828,7 @@ const syncAllFromStorage = () => {
                 <span class="text-xs font-normal text-slate-500">seragam</span>
               </div>
               <span class="text-xs font-bold text-purple-600 dark:text-purple-400 font-mono">
-                {{ stats.total_penerima > 0 ? Math.round(((stats.sheet_stats.srma?.total || 0) / stats.total_penerima) * 100) : 0 }}% Total
+                {{ stats.total_siswa > 0 ? Math.round(((stats.sheet_stats.srma?.total || 0) / stats.total_siswa) * 100) : 0 }}% Siswa
               </span>
             </div>
             <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
@@ -680,37 +837,97 @@ const syncAllFromStorage = () => {
               <span class="text-pink-600 dark:text-pink-400 font-medium">{{ stats.sheet_stats.srma?.wanita || 0 }} Perempuan</span>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- Card Guru & Tendik / Staff -->
+      <!-- ============================================================ -->
+      <!-- BAGIAN 2: REKAPITULASI STAFF DIPISAH SESUAI SHEET            -->
+      <!-- ============================================================ -->
+      <div class="space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">
+              <Briefcase class="w-3.5 h-3.5" />
+            </span>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+              Rekapitulasi Kebutuhan Seragam Staff & Tenaga Pendidik Sesuai Sheet
+            </h3>
+            <span class="text-[11px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline">
+              (Kepsek • Guru • Tendik • Satpam • Kebersihan • Dapur)
+            </span>
+          </div>
+
+          <span v-if="selectedKategori && selectedKategori !== 'SISWA'" class="text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1.5 w-fit">
+            Filter Sheet Staff Aktif: <span class="font-bold uppercase">{{ selectedKategori }}</span>
+            <button @click="selectedKategori = ''; activeTab = 'SISWA'; applyFilters()" class="hover:text-rose-600 ml-0.5 cursor-pointer" title="Hapus filter sheet staff">✕</button>
+          </span>
+        </div>
+
+        <!-- Grid 8 Card Staff Sesuai Sheet -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div
-            @click="selectedKategori = selectedKategori === 'guru' ? '' : 'guru'; applyFilters()"
+            v-for="card in staffCardList"
+            :key="card.key"
+            @click="filterByStaffSheet(card.sheet)"
             class="p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group hover:shadow-md"
-            :class="selectedKategori === 'guru'
-              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/30'
-              : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800/90 hover:border-amber-300 dark:hover:border-amber-700'"
+            :class="getStaffCardClasses(card.color, activeTab === card.sheet || selectedKategori === card.sheet)"
           >
+            <!-- Header Card -->
             <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-1.5">
-                <span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                  STAFF
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span
+                  class="px-2 py-0.5 rounded-md text-[10px] font-extrabold shrink-0 border"
+                  :class="[
+                    card.color === 'amber' ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800' :
+                    card.color === 'sky' ? 'bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800' :
+                    card.color === 'indigo' ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' :
+                    card.color === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
+                    card.color === 'teal' ? 'bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800' :
+                    card.color === 'purple' ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800' :
+                    card.color === 'rose' ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800' :
+                    'bg-orange-100 dark:bg-orange-900/60 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800'
+                  ]"
+                >
+                  {{ card.badge }}
                 </span>
-                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Guru & Tendik</span>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                  {{ card.label }}
+                </span>
               </div>
-              <span class="text-[10px] text-slate-400 font-mono">Pegawai SR</span>
+              <span class="text-[10px] text-slate-400 font-mono shrink-0">{{ card.sublabel }}</span>
             </div>
+
+            <!-- Body Card: Total Count -->
             <div class="flex items-baseline justify-between">
               <div class="text-2xl font-black text-slate-900 dark:text-white">
-                {{ stats.total_guru_tendik + stats.total_staff_khusus }}
+                {{ card.total }}
                 <span class="text-xs font-normal text-slate-500">seragam</span>
               </div>
-              <span class="text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
-                Staff & Khusus
+              <span
+                v-if="card.sheet === 'SATPAM'"
+                class="text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono bg-purple-50 dark:bg-purple-950/60 px-1.5 py-0.5 rounded-md border border-purple-200 dark:border-purple-800"
+              >
+                +PDH
+              </span>
+              <span
+                v-else-if="card.sheet.includes('BARU')"
+                class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800"
+              >
+                Baru
+              </span>
+              <span
+                v-else
+                class="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-mono"
+              >
+                Sheet
               </span>
             </div>
+
+            <!-- Footer Card: Gender Breakdown -->
             <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span class="text-amber-700 dark:text-amber-300 font-medium">{{ stats.total_guru_tendik }} Guru/Tendik</span>
+              <span class="text-blue-600 dark:text-blue-400 font-medium">{{ card.pria }} Laki-laki</span>
               <span>•</span>
-              <span class="text-slate-600 dark:text-slate-400 font-medium">{{ stats.total_staff_khusus }} Satpam/Kebersihan/Dapur</span>
+              <span class="text-pink-600 dark:text-pink-400 font-medium">{{ card.wanita }} Perempuan</span>
             </div>
           </div>
         </div>
@@ -759,22 +976,28 @@ const syncAllFromStorage = () => {
               </select>
             </div>
 
-            <!-- Filter Kategori Sheet -->
+            <!-- Filter Kategori Sheet (Pisah Sesuai Sheet) -->
             <div class="flex items-center gap-1.5">
-              <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Kategori:</label>
+              <label class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sheet / Kategori:</label>
               <select
                 v-model="selectedKategori"
                 @change="applyFilters"
                 class="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
               >
-                <option value="">Semua Kategori</option>
-                <option value="siswa">🎓 Siswa</option>
-                <option value="kepsek">🏫 Kepala Sekolah</option>
-                <option value="guru">👨‍🏫 Guru (Baru & Lama)</option>
-                <option value="tendik">💼 Tendik (Baru & Lama)</option>
-                <option value="satpam">🛡️ Satpam (PDH)</option>
-                <option value="kebersihan">🧹 Petugas Kebersihan</option>
-                <option value="dapur">🍳 Petugas Dapur</option>
+                <option value="">Semua Sheet (9 Kategori)</option>
+                <optgroup label="Siswa">
+                  <option value="SISWA">🎓 SISWA (SD / SMP / SMA)</option>
+                </optgroup>
+                <optgroup label="Staff & Tenaga Pendidik">
+                  <option value="KEPSEK">🏫 KEPSEK (Kepala Sekolah)</option>
+                  <option value="GURU LAMA">👨‍🏫 GURU LAMA</option>
+                  <option value="GURU BARU">👨‍🏫 GURU BARU (Termasuk Sheet GURU)</option>
+                  <option value="TENDIK LAMA">💼 TENDIK LAMA</option>
+                  <option value="TENDIK BARU">💼 TENDIK BARU (Termasuk Sheet TENDIK)</option>
+                  <option value="SATPAM">🛡️ SATPAM (Termasuk PDH)</option>
+                  <option value="PETUGAS KEBERSIHAN">🧹 PETUGAS KEBERSIHAN</option>
+                  <option value="PETUGAS DAPUR">🍳 PETUGAS DAPUR</option>
+                </optgroup>
               </select>
             </div>
 
@@ -978,7 +1201,7 @@ const syncAllFromStorage = () => {
               <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 9
               </span>
-              <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori Sheet</span>
             </div>
           </div>
         </div>
@@ -990,7 +1213,7 @@ const syncAllFromStorage = () => {
               v-for="s in sheetsList"
               :key="s.key"
               type="button"
-              @click="activeTab = s.key"
+              @click="activeTab = s.key; selectedKategori = s.key"
               class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0"
               :class="[
                 activeTab === s.key
