@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { computed } from 'vue';
 import { usePage, router as inertiaRouter } from '@inertiajs/vue3';
 import { useRouter } from 'vue-router';
+import { useSidebar } from '../composables/useSidebar';
 import { 
   Home, 
   LayoutDashboard, 
@@ -19,8 +20,6 @@ import {
   Sparkles,
   Layers,
   X,
-  Pin,
-  PinOff,
   ShieldCheck,
   FileSpreadsheet,
   Shirt
@@ -42,6 +41,14 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:open', 'toggleCollapse']);
+
+const { 
+  isSidebarOpen, 
+  isCollapsed, 
+  toggleCollapse, 
+  closeMobileSidebar, 
+  sidebarWidthClass 
+} = useSidebar();
 
 const isSpa = computed(() => props.mode === 'spa');
 
@@ -77,39 +84,14 @@ const currentUser = computed(() => {
   }
 });
 
-// Sidebar Collapsed & Pinned states (persisted to localStorage)
-const isCollapsed = ref(false);
-const isPinned = ref(false);
-
-onMounted(() => {
-  const savedCollapsed = localStorage.getItem('hybrid_sidebar_collapsed');
-  if (savedCollapsed !== null) {
-    isCollapsed.value = savedCollapsed === 'true';
-  }
-
-  const savedPinned = localStorage.getItem('hybrid_sidebar_pinned');
-  if (savedPinned !== null) {
-    isPinned.value = savedPinned === 'true';
-  }
-});
-
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value;
-  localStorage.setItem('hybrid_sidebar_collapsed', isCollapsed.value.toString());
-  emit('toggleCollapse', isCollapsed.value);
-};
-
-const togglePin = () => {
-  isPinned.value = !isPinned.value;
-  localStorage.setItem('hybrid_sidebar_pinned', isPinned.value.toString());
-};
-
 const closeSidebar = () => {
+  closeMobileSidebar();
   emit('update:open', false);
 };
 
 const handleNavClick = (targetPath, isExternal, e) => {
-  if (!isPinned.value) {
+  // On mobile screens, close drawer after clicking nav item
+  if (typeof window !== 'undefined' && window.innerWidth < 1024) {
     closeSidebar();
   }
   if (isExternal || !targetPath) return;
@@ -201,7 +183,7 @@ const navSections = computed(() => [
 
 <template>
   <div>
-    <!-- Backdrop (shown when sidebar is open in drawer mode) -->
+    <!-- Backdrop (Mobile Drawer Only) -->
     <transition
       enter-active-class="transition-opacity duration-300 ease-out"
       enter-from-class="opacity-0"
@@ -211,21 +193,20 @@ const navSections = computed(() => [
       leave-to-class="opacity-0"
     >
       <div 
-        v-if="open && !isPinned" 
+        v-if="isSidebarOpen" 
         @click="closeSidebar"
-        class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm"
+        class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm lg:hidden"
       ></div>
     </transition>
 
-    <!-- Sidebar Aside Element -->
+    <!-- Sidebar Aside Element (Permanently Visible on Desktop, Slide Drawer on Mobile) -->
     <aside
       class="fixed top-0 bottom-0 left-0 z-40 bg-white/95 dark:bg-slate-950/95 border-r border-slate-200 dark:border-slate-800/90 backdrop-blur-2xl flex flex-col transition-all duration-300 font-sans"
       :class="[
-        // Visibility check: open OR pinned on desktop
-        (open || isPinned) ? 'translate-x-0' : '-translate-x-full',
-        // Desktop collapsed width
-        isCollapsed ? 'w-20' : 'w-72 max-w-[85vw]',
-        isPinned ? 'shadow-none' : 'shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/40'
+        // Visibility: Always visible on desktop (lg:translate-x-0), toggle on mobile
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        sidebarWidthClass,
+        'shadow-2xl lg:shadow-none shadow-indigo-950/20 dark:shadow-indigo-950/40'
       ]"
     >
       <!-- Sidebar Header -->
@@ -247,7 +228,7 @@ const navSections = computed(() => [
           </div>
         </a>
 
-        <!-- Controls: Collapse, Pin, Close -->
+        <!-- Controls: Collapse on Desktop, Close on Mobile -->
         <div class="flex items-center gap-1">
           <!-- Desktop Collapse Button -->
           <button
@@ -260,27 +241,11 @@ const navSections = computed(() => [
             <ChevronLeft v-else class="w-4 h-4" />
           </button>
 
-          <!-- Pin/Unpin Button -->
-          <button
-            v-if="!isCollapsed"
-            type="button"
-            @click="togglePin"
-            class="hidden lg:flex p-1.5 rounded-lg transition-colors cursor-pointer"
-            :class="isPinned 
-              ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60' 
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800'"
-            :title="isPinned ? 'Lepas Pin Sidebar' : 'Pin Sidebar di Sisi Kiri'"
-          >
-            <PinOff v-if="isPinned" class="w-4 h-4" />
-            <Pin v-else class="w-4 h-4" />
-          </button>
-
-          <!-- Close Drawer Button -->
+          <!-- Close Drawer Button (Mobile Only) -->
           <button
             type="button"
             @click="closeSidebar"
-            class="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            :class="isPinned ? 'lg:hidden' : ''"
+            class="lg:hidden p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title="Tutup Navigasi"
           >
             <X class="w-4 h-4" />

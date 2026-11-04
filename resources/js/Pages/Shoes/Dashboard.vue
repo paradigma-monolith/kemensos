@@ -2,6 +2,9 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { Head, router, Link } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
+import { useSidebar } from '../../composables/useSidebar';
+
+const { layoutPaddingClass } = useSidebar();
 import BaseChart from '../../Components/BaseChart.vue';
 import {
   LayoutDashboard,
@@ -472,7 +475,10 @@ const schoolComparisonChartOption = computed(() => {
   <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white transition-colors duration-200">
     <HybridNavbar mode="inertia" currentRoute="dashboard" />
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
+    <main 
+      class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 sm:py-10 space-y-8 transition-all duration-300"
+      :class="layoutPaddingClass"
+    >
       
       <!-- Hero & Quick Action Header -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-4 border-b border-slate-200/80 dark:border-slate-800/80">

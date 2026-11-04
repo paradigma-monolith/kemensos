@@ -2,6 +2,9 @@
 import { ref, computed, watch } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
+import { useSidebar } from '../../composables/useSidebar';
+
+const { layoutPaddingClass } = useSidebar();
 import {
   Shirt,
   UploadCloud,
@@ -627,8 +630,11 @@ const syncAllFromStorage = () => {
     <!-- Top Navigation Header -->
     <HybridNavbar currentRoute="uniforms" />
 
-    <!-- Main Content Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <!-- Main Content Container (Full Width & Responsive with Sidebar) -->
+    <main 
+      class="flex-1 w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 space-y-6 transition-all duration-300"
+      :class="layoutPaddingClass"
+    >
       <!-- Breadcrumb & Top Bar -->
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>

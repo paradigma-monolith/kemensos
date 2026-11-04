@@ -16,6 +16,9 @@ import {
 } from 'lucide-vue-next';
 import AdminSidebar from './AdminSidebar.vue';
 import ThemeSwitcher from './ThemeSwitcher.vue';
+import { useSidebar } from '../composables/useSidebar';
+
+const { isSidebarOpen, isCollapsed, toggleSidebar, layoutPaddingClass } = useSidebar();
 
 const props = defineProps({
   mode: {
@@ -98,9 +101,6 @@ const currentUser = computed(() => {
     return (typeof window !== 'undefined' && window.authUser) ? window.authUser : null;
   }
 });
-
-// Sidebar Drawer State
-const sidebarOpen = ref(false);
 
 // Real-Time Notifications State
 const unreadCount = ref(0);
@@ -225,7 +225,7 @@ onMounted(() => {
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        sidebarOpen.value = !sidebarOpen.value;
+        toggleSidebar();
       }
       if (e.key === 'Escape') {
         closeAllDropdowns();
@@ -249,16 +249,19 @@ const handleLogout = () => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-50 w-full backdrop-blur-xl bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-300">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <header 
+    class="sticky top-0 z-30 w-full backdrop-blur-xl bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/80 dark:border-slate-800/80 transition-all duration-300"
+    :class="layoutPaddingClass"
+  >
+    <div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10">
       <div class="flex items-center justify-between h-16">
         <!-- Sidebar Trigger & Brand -->
         <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <button
             type="button"
-            @click="sidebarOpen = !sidebarOpen"
+            @click="toggleSidebar"
             class="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-900/80 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition-all cursor-pointer flex items-center justify-center group shrink-0"
-            title="Buka Navigasi Sidebar (Ctrl+B)"
+            :title="isCollapsed ? 'Perluas Sidebar (Ctrl+B)' : 'Ciutkan Sidebar (Ctrl+B)'"
           >
             <Menu class="w-4 h-4 transition-transform group-hover:scale-110" />
           </button>
@@ -496,9 +499,8 @@ const handleLogout = () => {
     </div>
   </Transition>
 
-  <!-- Collapsible Sidebar Navigation -->
+  <!-- Admin Sidebar Navigation -->
   <AdminSidebar 
-    v-model:open="sidebarOpen" 
     :mode="mode" 
     :currentRoute="currentRoute" 
   />
