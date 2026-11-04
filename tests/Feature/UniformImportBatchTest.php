@@ -181,8 +181,81 @@ class UniformImportBatchTest extends TestCase
 
     public function test_can_export_uniform_recap_excel(): void
     {
-        $response = $this->actingAs($this->user)->get(route('uniforms.export.excel'));
+        $school = School::create(['nama_sekolah' => 'SRMA 13 Bekasi', 'pic_nama' => 'YULIA']);
+        $batch = UniformImportBatch::create([
+            'school_id' => $school->id,
+            'school_name' => 'SRMA 13 Bekasi',
+            'file_name' => 'Data_Ukuran_Seragam_SRMA_13_Bekasi.xlsx',
+            'pic_nama' => 'YULIA',
+            'total_rows' => 3,
+            'total_siswa' => 1,
+            'total_satpam' => 1,
+            'recap_data' => [
+                'recapitulation' => [
+                    'SISWA' => [
+                        'count' => 1,
+                        'data' => [
+                            [
+                                'no' => 1,
+                                'nama_lengkap' => 'Ahmad Siswa',
+                                'jenis_kelamin' => 'L',
+                                'jenjang' => 'SMA',
+                                'atasan' => ['lingkar_badan_cm' => 90, 'panjang_badan_cm' => 65],
+                                'bawahan' => ['lingkar_pinggang_cm' => 75, 'panjang_celana_cm' => 95, 'panjang_pesak_cm' => 60],
+                                'konversi_vendor' => 'L',
+                            ]
+                        ]
+                    ],
+                    'SATPAM' => [
+                        'count' => 1,
+                        'data' => [
+                            [
+                                'no' => 1,
+                                'nama_lengkap' => 'Bambang Satpam',
+                                'jenis_kelamin' => 'L',
+                                'status' => 'ASN',
+                                'atasan' => ['lingkar_badan_cm' => 100, 'panjang_badan_cm' => 70],
+                                'bawahan' => ['lingkar_pinggang_cm' => 85, 'panjang_celana_cm' => 100, 'panjang_pesak_cm' => 65, 'ukuran_sepatu_pdh' => 42],
+                                'konversi_vendor' => 'XL',
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('uniforms.export.excel', ['batch_id' => $batch->id]));
         $response->assertStatus(200);
         $this->assertTrue(str_contains($response->headers->get('content-type'), 'spreadsheetml'));
+
+        // Capture streamed content and read with PhpSpreadsheet
+        ob_start();
+        $response->sendContent();
+        $content = ob_get_clean();
+
+        $tmpFile = storage_path('app/temp_export_test.xlsx');
+        file_put_contents($tmpFile, $content);
+
+        $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+        $spreadsheet = $reader->load($tmpFile);
+
+        // Check SUMMARY sheet exists and is index 0
+        $this->assertEquals('SUMMARY', $spreadsheet->getSheet(0)->getTitle());
+
+        $summarySheet = $spreadsheet->getSheetByName('SUMMARY');
+        $this->assertNotNull($summarySheet);
+
+        // Check Title and Meta
+        $this->assertEquals('REKAPITULASI KEBUTUHAN DATA UKURAN SERAGAM SEKOLAH RAKYAT', $summarySheet->getCell('A2')->getValue());
+        $this->assertEquals('SRMA 13 Bekasi', $summarySheet->getCell('B5')->getValue());
+        $this->assertEquals('YULIA', $summarySheet->getCell('B6')->getValue());
+
+        // Check that category sheets are also present
+        $this->assertNotNull($spreadsheet->getSheetByName('SISWA'));
+        $this->assertNotNull($spreadsheet->getSheetByName('SATPAM'));
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+        @unlink($tmpFile);
     }
 }

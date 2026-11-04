@@ -560,7 +560,7 @@ class UniformController extends Controller
     }
 
     /**
-     * Export uniform recapitulation to Excel.
+     * Export uniform recapitulation to Excel with Summary Sheet.
      */
     public function exportExcel(Request $request): StreamedResponse
     {
@@ -580,12 +580,468 @@ class UniformController extends Controller
             $batch = UniformImportBatch::latest()->first();
         }
 
-        $recap = $batch?->recap_data['recapitulation'] ?? [];
-        $schoolName = $batch?->school_name ?? 'Semua_Sekolah';
+        $sessionRecap = session('uniform_recap');
+        $recap = $batch?->recap_data['recapitulation'] ?? $sessionRecap['recapitulation'] ?? [];
+        $schoolName = $batch?->school_name ?? $sessionRecap['school_name'] ?? 'Semua_Sekolah';
+        $picNama = $batch?->pic_nama ?? $sessionRecap['pic_nama'] ?? 'Belum Ditentukan';
+        $sourceFile = $batch?->file_name ?? $sessionRecap['file_name'] ?? '-';
 
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0); // remove default sheet
 
+        $schema = UniformExcelImportService::SCHEMA;
+
+        // Pre-aggregate statistics for Summary Sheet
+        $sheetSummaries = [];
+        $overallTotal = 0;
+        $overallL = 0;
+        $overallP = 0;
+
+        $jenjangStats = [
+            'SRD' => ['label' => 'SRD (Sekolah Rakyat Dasar)', 'l' => 0, 'p' => 0, 'total' => 0],
+            'SRMP' => ['label' => 'SRMP (Sekolah Rakyat Menengah Pertama)', 'l' => 0, 'p' => 0, 'total' => 0],
+            'SRMA' => ['label' => 'SRMA (Sekolah Rakyat Menengah Atas)', 'l' => 0, 'p' => 0, 'total' => 0],
+        ];
+
+        $vendorSizeDistribution = [];
+        $satpamPdhDistribution = [];
+
+        foreach ($schema as $sheetKey => $conf) {
+            $sheetData = $recap[$sheetKey]['data'] ?? [];
+            $lCount = 0;
+            $pCount = 0;
+            $sTotal = count($sheetData);
+
+            foreach ($sheetData as $row) {
+                $jk = strtoupper(trim((string)($row['jenis_kelamin'] ?? '')));
+                if ($jk === 'L') {
+                    $lCount++;
+                    $overallL++;
+                } elseif ($jk === 'P') {
+                    $pCount++;
+                    $overallP++;
+                }
+
+                // Vendor conversion tracking
+                $vSize = trim((string)($row['konversi_vendor'] ?? ''));
+                if ($vSize === '') {
+                    $vSize = 'BELUM DIKONVERSI';
+                }
+                $vSize = strtoupper($vSize);
+                if (!isset($vendorSizeDistribution[$vSize])) {
+                    $vendorSizeDistribution[$vSize] = ['siswa' => 0, 'staff' => 0, 'total' => 0];
+                }
+                if ($sheetKey === 'SISWA') {
+                    $vendorSizeDistribution[$vSize]['siswa']++;
+                } else {
+                    $vendorSizeDistribution[$vSize]['staff']++;
+                }
+                $vendorSizeDistribution[$vSize]['total']++;
+
+                // Jenjang tracking for SISWA
+                if ($sheetKey === 'SISWA') {
+                    $jVal = strtoupper(trim((string)($row['jenjang'] ?? '')));
+                    if (str_contains($jVal, 'SD') || str_contains($jVal, 'SRD')) {
+                        $jCode = 'SRD';
+                    } elseif (str_contains($jVal, 'SMP') || str_contains($jVal, 'SRMP')) {
+                        $jCode = 'SRMP';
+                    } else {
+                        $jCode = 'SRMA';
+                    }
+                    if ($jk === 'L') {
+                        $jenjangStats[$jCode]['l']++;
+                    } elseif ($jk === 'P') {
+                        $jenjangStats[$jCode]['p']++;
+                    }
+                    $jenjangStats[$jCode]['total']++;
+                }
+
+                // PDH Shoe tracking for SATPAM
+                if ($sheetKey === 'SATPAM') {
+                    $pdh = (int)($row['bawahan']['ukuran_sepatu_pdh'] ?? 0);
+                    if ($pdh > 0) {
+                        $satpamPdhDistribution[$pdh] = ($satpamPdhDistribution[$pdh] ?? 0) + 1;
+                    }
+                }
+            }
+
+            $overallTotal += $sTotal;
+            $sheetSummaries[$sheetKey] = [
+                'label' => $sheetKey,
+                'l' => $lCount,
+                'p' => $pCount,
+                'total' => $sTotal,
+            ];
+        }
+
+        // Sort vendor sizes
+        $sizeOrder = ['XS' => 1, 'S' => 2, 'M' => 3, 'L' => 4, 'XL' => 5, 'XXL' => 6, '2XL' => 6, '3XL' => 7, 'XXXL' => 7, '4XL' => 8, '5XL' => 9];
+        uksort($vendorSizeDistribution, function ($a, $b) use ($sizeOrder) {
+            $rankA = $sizeOrder[$a] ?? 99;
+            $rankB = $sizeOrder[$b] ?? 99;
+            if ($rankA === $rankB) {
+                return strcmp($a, $b);
+            }
+            return $rankA <=> $rankB;
+        });
+
+        ksort($satpamPdhDistribution);
+
+        // =============================================================
+        // SHEET 0: SUMMARY (RINGKASAN REKAPITULASI)
+        // =============================================================
+        $summarySheet = $spreadsheet->createSheet(0);
+        $summarySheet->setTitle('SUMMARY');
+        $summarySheet->setShowGridlines(true);
+
+        // Title Banner (Row 2-3)
+        $summarySheet->setCellValue('A2', 'REKAPITULASI KEBUTUHAN DATA UKURAN SERAGAM SEKOLAH RAKYAT');
+        $summarySheet->mergeCells('A2:F2');
+        $summarySheet->getStyle('A2:F2')->applyFromArray([
+            'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1E1B4B']], // Dark Navy
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $summarySheet->getRowDimension(2)->setRowHeight(32);
+
+        $summarySheet->setCellValue('A3', 'KEMENTERIAN SOSIAL REPUBLIK INDONESIA — STANDARISASI UKURAN DAN KONVERSI VENDOR');
+        $summarySheet->mergeCells('A3:F3');
+        $summarySheet->getStyle('A3:F3')->applyFromArray([
+            'font' => ['italic' => true, 'size' => 9, 'color' => ['rgb' => 'E0E7FF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '312E81']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $summarySheet->getRowDimension(3)->setRowHeight(20);
+
+        // Metadata Block (Rows 5-9)
+        $metaBlock = [
+            ['Satuan Pendidikan (Sekolah)', $schoolName],
+            ['Penanggung Jawab (PIC)', $picNama],
+            ['Berkas Sumber Excel', $sourceFile],
+            ['Waktu Ekspor', date('d F Y, H:i') . ' WIB'],
+            ['Total Keseluruhan Penerima', number_format($overallTotal, 0, ',', '.') . ' Orang'],
+        ];
+
+        $curR = 5;
+        foreach ($metaBlock as $m) {
+            $summarySheet->setCellValue("A{$curR}", $m[0]);
+            $summarySheet->setCellValue("B{$curR}", $m[1]);
+            $summarySheet->mergeCells("B{$curR}:F{$curR}");
+            $summarySheet->getStyle("A{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'size' => 10, 'color' => ['rgb' => '334155']],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F1F5F9']],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+            ]);
+            $summarySheet->getStyle("B{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['size' => 10, 'bold' => ($curR === 5 || $curR === 9), 'color' => ($curR === 9 ? ['rgb' => '4338CA'] : ['rgb' => '0F172A'])],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(20);
+            $curR++;
+        }
+
+        // TABEL 1: Rekapitulasi Per Sheet / Kategori
+        $curR += 1;
+        $summarySheet->setCellValue("A{$curR}", '1. REKAPITULASI JUMLAH PENERIMA PER SHEET / KATEGORI');
+        $summarySheet->mergeCells("A{$curR}:F{$curR}");
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '1E1B4B']],
+        ]);
+        $curR++;
+
+        $t1Headers = ['No', 'Sheet / Kategori Penerima', 'Laki-laki (L)', 'Perempuan (P)', 'Total Penerima', '% Total'];
+        $cols = ['A', 'B', 'C', 'D', 'E', 'F'];
+        foreach ($t1Headers as $idx => $th) {
+            $summarySheet->setCellValue("{$cols[$idx]}{$curR}", $th);
+        }
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4338CA']], // Indigo 700
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+        ]);
+        $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+        $t1StartRow = $curR + 1;
+        $rowIdx = 1;
+        foreach ($sheetSummaries as $shKey => $shData) {
+            $curR++;
+            $summarySheet->setCellValue("A{$curR}", $rowIdx++);
+            $summarySheet->setCellValue("B{$curR}", $shKey);
+            $summarySheet->setCellValue("C{$curR}", $shData['l']);
+            $summarySheet->setCellValue("D{$curR}", $shData['p']);
+            $summarySheet->setCellValue("E{$curR}", "=C{$curR}+D{$curR}");
+            $summarySheet->setCellValue("F{$curR}", $overallTotal > 0 ? "=E{$curR}/{$overallTotal}" : 0);
+
+            $summarySheet->getStyle("A{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+
+            $fillColor = ($rowIdx % 2 === 0) ? 'F8FAFC' : 'FFFFFF';
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $fillColor]],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(20);
+        }
+        $t1EndRow = $curR;
+
+        // Total Row Table 1
+        $curR++;
+        $summarySheet->setCellValue("A{$curR}", 'TOTAL');
+        $summarySheet->mergeCells("A{$curR}:B{$curR}");
+        $summarySheet->setCellValue("C{$curR}", "=SUM(C{$t1StartRow}:C{$t1EndRow})");
+        $summarySheet->setCellValue("D{$curR}", "=SUM(D{$t1StartRow}:D{$t1EndRow})");
+        $summarySheet->setCellValue("E{$curR}", "=SUM(E{$t1StartRow}:E{$t1EndRow})");
+        $summarySheet->setCellValue("F{$curR}", "=SUM(F{$t1StartRow}:F{$t1EndRow})");
+
+        $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '1E1B4B'], 'size' => 10],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E0E7FF']],
+            'borders' => [
+                'top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['rgb' => '4338CA']],
+                'bottom' => ['borderStyle' => Border::BORDER_DOUBLE, 'color' => ['rgb' => '4338CA']],
+                'left' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                'right' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+            ],
+        ]);
+        $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+        // TABEL 2: Rekapitulasi Siswa Berdasarkan Jenjang
+        $curR += 2;
+        $summarySheet->setCellValue("A{$curR}", '2. REKAPITULASI SISWA BERDASARKAN JENJANG (SRD, SRMP, SRMA)');
+        $summarySheet->mergeCells("A{$curR}:F{$curR}");
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '065F46']],
+        ]);
+        $curR++;
+
+        $t2Headers = ['No', 'Jenjang Sekolah Rakyat', 'Laki-laki (L)', 'Perempuan (P)', 'Total Siswa', '% dari Siswa'];
+        foreach ($t2Headers as $idx => $th) {
+            $summarySheet->setCellValue("{$cols[$idx]}{$curR}", $th);
+        }
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '059669']], // Emerald 600
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+        ]);
+        $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+        $t2StartRow = $curR + 1;
+        $totalSiswa = $sheetSummaries['SISWA']['total'] ?? 0;
+        $jIdx = 1;
+        foreach ($jenjangStats as $jKey => $jData) {
+            $curR++;
+            $summarySheet->setCellValue("A{$curR}", $jIdx++);
+            $summarySheet->setCellValue("B{$curR}", $jData['label']);
+            $summarySheet->setCellValue("C{$curR}", $jData['l']);
+            $summarySheet->setCellValue("D{$curR}", $jData['p']);
+            $summarySheet->setCellValue("E{$curR}", "=C{$curR}+D{$curR}");
+            $summarySheet->setCellValue("F{$curR}", $totalSiswa > 0 ? "=E{$curR}/{$totalSiswa}" : 0);
+
+            $summarySheet->getStyle("A{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => ($jIdx % 2 === 0 ? 'F0FDF4' : 'FFFFFF')]],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(20);
+        }
+        $t2EndRow = $curR;
+
+        // Total Row Table 2
+        $curR++;
+        $summarySheet->setCellValue("A{$curR}", 'TOTAL SISWA');
+        $summarySheet->mergeCells("A{$curR}:B{$curR}");
+        $summarySheet->setCellValue("C{$curR}", "=SUM(C{$t2StartRow}:C{$t2EndRow})");
+        $summarySheet->setCellValue("D{$curR}", "=SUM(D{$t2StartRow}:D{$t2EndRow})");
+        $summarySheet->setCellValue("E{$curR}", "=SUM(E{$t2StartRow}:E{$t2EndRow})");
+        $summarySheet->setCellValue("F{$curR}", "=SUM(F{$t2StartRow}:F{$t2EndRow})");
+
+        $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+        $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => '065F46'], 'size' => 10],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D1FAE5']],
+            'borders' => [
+                'top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['rgb' => '059669']],
+                'bottom' => ['borderStyle' => Border::BORDER_DOUBLE, 'color' => ['rgb' => '059669']],
+                'left' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                'right' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+            ],
+        ]);
+        $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+        // TABEL 3: Distribusi Ukuran Seragam Hasil Konversi Vendor
+        if (!empty($vendorSizeDistribution)) {
+            $curR += 2;
+            $summarySheet->setCellValue("A{$curR}", '3. DISTRIBUSI UKURAN SERAGAM HASIL KONVERSI VENDOR');
+            $summarySheet->mergeCells("A{$curR}:F{$curR}");
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '581C87']],
+            ]);
+            $curR++;
+
+            $t3Headers = ['No', 'Ukuran Vendor', 'Siswa', 'Staff & Khusus', 'Total Kebutuhan', '% Distribusi'];
+            foreach ($t3Headers as $idx => $th) {
+                $summarySheet->setCellValue("{$cols[$idx]}{$curR}", $th);
+            }
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '7C3AED']], // Violet 600
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+            $t3StartRow = $curR + 1;
+            $vIdx = 1;
+            foreach ($vendorSizeDistribution as $szName => $szData) {
+                $curR++;
+                $summarySheet->setCellValue("A{$curR}", $vIdx++);
+                $summarySheet->setCellValue("B{$curR}", $szName);
+                $summarySheet->setCellValue("C{$curR}", $szData['siswa']);
+                $summarySheet->setCellValue("D{$curR}", $szData['staff']);
+                $summarySheet->setCellValue("E{$curR}", "=C{$curR}+D{$curR}");
+                $summarySheet->setCellValue("F{$curR}", $overallTotal > 0 ? "=E{$curR}/{$overallTotal}" : 0);
+
+                $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+                $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+
+                $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => ($vIdx % 2 === 0 ? 'FAF5FF' : 'FFFFFF')]],
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+                ]);
+                $summarySheet->getRowDimension($curR)->setRowHeight(20);
+            }
+            $t3EndRow = $curR;
+
+            // Total Row Table 3
+            $curR++;
+            $summarySheet->setCellValue("A{$curR}", 'TOTAL UKURAN VENDOR');
+            $summarySheet->mergeCells("A{$curR}:B{$curR}");
+            $summarySheet->setCellValue("C{$curR}", "=SUM(C{$t3StartRow}:C{$t3EndRow})");
+            $summarySheet->setCellValue("D{$curR}", "=SUM(D{$t3StartRow}:D{$t3EndRow})");
+            $summarySheet->setCellValue("E{$curR}", "=SUM(E{$t3StartRow}:E{$t3EndRow})");
+            $summarySheet->setCellValue("F{$curR}", "=SUM(F{$t3StartRow}:F{$t3EndRow})");
+
+            $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("C{$curR}:E{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $summarySheet->getStyle("F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => '581C87'], 'size' => 10],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EDE9FE']],
+                'borders' => [
+                    'top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['rgb' => '7C3AED']],
+                    'bottom' => ['borderStyle' => Border::BORDER_DOUBLE, 'color' => ['rgb' => '7C3AED']],
+                    'left' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                    'right' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                ],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(24);
+        }
+
+        // TABEL 4: Ukuran Sepatu PDH Khusus Satpam
+        if (!empty($satpamPdhDistribution)) {
+            $curR += 2;
+            $summarySheet->setCellValue("A{$curR}", '4. REKAPITULASI UKURAN SEPATU PDH (KHUSUS SATPAM)');
+            $summarySheet->mergeCells("A{$curR}:F{$curR}");
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '92400E']],
+            ]);
+            $curR++;
+
+            $summarySheet->setCellValue("A{$curR}", 'No');
+            $summarySheet->setCellValue("B{$curR}", 'Ukuran Sepatu PDH');
+            $summarySheet->setCellValue("C{$curR}", 'Jumlah Personel (Pasang)');
+            $summarySheet->mergeCells("C{$curR}:D{$curR}");
+            $summarySheet->setCellValue("E{$curR}", 'Persentase (%)');
+            $summarySheet->mergeCells("E{$curR}:F{$curR}");
+
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D97706']], // Amber 600
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(24);
+
+            $t4StartRow = $curR + 1;
+            $satpamTotal = $sheetSummaries['SATPAM']['total'] ?? array_sum($satpamPdhDistribution);
+            $pIdx = 1;
+            foreach ($satpamPdhDistribution as $sSize => $sQty) {
+                $curR++;
+                $summarySheet->setCellValue("A{$curR}", $pIdx++);
+                $summarySheet->setCellValue("B{$curR}", "Ukuran {$sSize}");
+                $summarySheet->setCellValue("C{$curR}", $sQty);
+                $summarySheet->mergeCells("C{$curR}:D{$curR}");
+                $summarySheet->setCellValue("E{$curR}", $satpamTotal > 0 ? "=C{$curR}/{$satpamTotal}" : 0);
+                $summarySheet->mergeCells("E{$curR}:F{$curR}");
+
+                $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $summarySheet->getStyle("C{$curR}:D{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $summarySheet->getStyle("E{$curR}:F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+                $summarySheet->getStyle("E{$curR}:F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+
+                $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => ($pIdx % 2 === 0 ? 'FFFBEB' : 'FFFFFF')]],
+                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+                ]);
+                $summarySheet->getRowDimension($curR)->setRowHeight(20);
+            }
+            $t4EndRow = $curR;
+
+            // Total Row Table 4
+            $curR++;
+            $summarySheet->setCellValue("A{$curR}", 'TOTAL SEPATU PDH');
+            $summarySheet->mergeCells("A{$curR}:B{$curR}");
+            $summarySheet->setCellValue("C{$curR}", "=SUM(C{$t4StartRow}:C{$t4EndRow})");
+            $summarySheet->mergeCells("C{$curR}:D{$curR}");
+            $summarySheet->setCellValue("E{$curR}", "=SUM(E{$t4StartRow}:E{$t4EndRow})");
+            $summarySheet->mergeCells("E{$curR}:F{$curR}");
+
+            $summarySheet->getStyle("A{$curR}:B{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("C{$curR}:D{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $summarySheet->getStyle("E{$curR}:F{$curR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $summarySheet->getStyle("E{$curR}:F{$curR}")->getNumberFormat()->setFormatCode('0.0%');
+            $summarySheet->getStyle("A{$curR}:F{$curR}")->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => '92400E'], 'size' => 10],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF3C7']],
+                'borders' => [
+                    'top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['rgb' => 'D97706']],
+                    'bottom' => ['borderStyle' => Border::BORDER_DOUBLE, 'color' => ['rgb' => 'D97706']],
+                    'left' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                    'right' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']],
+                ],
+            ]);
+            $summarySheet->getRowDimension($curR)->setRowHeight(24);
+        }
+
+        // Set column dimensions for SUMMARY
+        $summarySheet->getColumnDimension('A')->setWidth(8);
+        $summarySheet->getColumnDimension('B')->setWidth(38);
+        $summarySheet->getColumnDimension('C')->setWidth(18);
+        $summarySheet->getColumnDimension('D')->setWidth(18);
+        $summarySheet->getColumnDimension('E')->setWidth(18);
+        $summarySheet->getColumnDimension('F')->setWidth(18);
+
+        // =============================================================
+        // SHEETS 1..9: DETAIL PER KATEGORI (SISWA, STAFF, DLL)
+        // =============================================================
         $headerStyleIndigo = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4338CA']],
@@ -607,11 +1063,9 @@ class UniformController extends Controller
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
         ];
 
-        $schema = UniformExcelImportService::SCHEMA;
-
         foreach ($schema as $sheetKey => $conf) {
             $sheetData = $recap[$sheetKey]['data'] ?? [];
-            if (empty($sheetData) && count($spreadsheet->getAllSheets()) > 0) {
+            if (empty($sheetData) && count($spreadsheet->getAllSheets()) > 1) {
                 continue;
             }
 
@@ -688,11 +1142,8 @@ class UniformController extends Controller
             }
         }
 
-        if (count($spreadsheet->getAllSheets()) === 0) {
-            $sheet = $spreadsheet->createSheet();
-            $sheet->setTitle('Kosong');
-            $sheet->setCellValue('A1', 'Belum ada data ukuran seragam.');
-        }
+        // Set SUMMARY sheet as active sheet when file is opened
+        $spreadsheet->setActiveSheetIndex(0);
 
         $cleanSchool = preg_replace('/[^A-Za-z0-9_-]/', '_', $schoolName);
         $fileName = "Rekap_Seragam_{$cleanSchool}_" . date('Ymd_His') . ".xlsx";
