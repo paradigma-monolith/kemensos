@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { Head, useForm, router } from '@inertiajs/vue3';
+import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
 import {
   Shirt,
@@ -20,7 +20,13 @@ import {
   Info,
   X,
   Footprints,
-  UserCheck
+  UserCheck,
+  Layers,
+  RefreshCw,
+  Trash2,
+  Eye,
+  FileUp,
+  Calendar
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -57,27 +63,107 @@ const props = defineProps({
       'YUPITA',
     ],
   },
+  schools: {
+    type: Array,
+    default: () => [],
+  },
+  batches: {
+    type: [Object, Array],
+    default: () => ({}),
+  },
+  stats: {
+    type: Object,
+    default: () => ({
+      total_penerima: 0,
+      total_siswa: 0,
+      total_guru_tendik: 0,
+      total_staff_khusus: 0,
+      total_schools: 0,
+      total_batches: 0,
+    }),
+  },
+  filters: {
+    type: Object,
+    default: () => ({
+      school_id: null,
+      pic: '',
+      search: '',
+      tab: 'recap',
+    }),
+  },
 });
 
+const page = usePage();
+
+// Intelligent active primary tab detection ('recap' | 'batches')
+const getInitialPrimaryTab = () => {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab');
+    if (urlTab && ['recap', 'batches'].includes(urlTab)) {
+      return urlTab;
+    }
+    if (params.has('batch_page')) {
+      return 'batches';
+    }
+  }
+  if (props.filters?.tab && ['recap', 'batches'].includes(props.filters.tab)) {
+    return props.filters.tab;
+  }
+  return 'recap';
+};
+
+const primaryTab = ref(getInitialPrimaryTab());
+
+const switchPrimaryTab = (tab) => {
+  primaryTab.value = tab;
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {
+      // ignore
+    }
+  }
+};
+
+// Batch list computation
+const batchList = computed(() => {
+  if (Array.isArray(props.batches)) return props.batches;
+  return props.batches?.data || [];
+});
+
+const totalBatchesCount = computed(() => {
+  return props.batches?.total ?? batchList.value.length;
+});
+
+// Sheet sub-tab in recap mode
 const activeTab = ref('SISWA');
 const searchQuery = ref('');
 const filterGender = ref('');
 const isUploadModalOpen = ref(false);
+const isSyncing = ref(false);
 const isCopied = ref(false);
 const fileInput = ref(null);
-const selectedFileName = ref('');
+const selectedFiles = ref([]);
 
-// PIC Selection state
+// PIC Selection state for modal
 const selectedPicOption = ref('');
 const customPicName = ref('');
 
-// Pagination state: Maximum 15 rows per page
+// Filter states for Riwayat Berkas tab
+const batchSearch = ref(props.filters.search || '');
+const selectedSchoolFilter = ref(props.filters.school_id || '');
+const selectedPicFilter = ref(props.filters.pic || '');
+
+// Pagination state: Maximum 15 rows per page for data table
 const perPage = ref(15);
 const currentPage = ref(1);
 
 // Form for Inertia file upload
 const uploadForm = useForm({
-  file: null,
+  excel_files: [],
   pic_nama: '',
 });
 
@@ -138,7 +224,7 @@ const paginatedSheetRows = computed(() => {
   return filteredRows.value.slice(start, start + perPage.value);
 });
 
-// Smart pagination buttons generator (with delta, first/last, and ellipsis '...')
+// Smart pagination buttons generator (matching exact design)
 const paginationLinks = computed(() => {
   const current = currentPage.value;
   const last = totalPages.value;
@@ -189,18 +275,23 @@ const getSheetCount = (sheetKey) => {
   return currentRecap.value[sheetKey]?.data?.length || 0;
 };
 
-// Handle file selection
+// Handle files selection
 const handleFileChange = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    uploadForm.file = file;
-    selectedFileName.value = file.name;
+  const files = Array.from(e.target.files || []);
+  if (files.length > 0) {
+    selectedFiles.value = files;
+    uploadForm.excel_files = files;
   }
+};
+
+const removeFile = (idx) => {
+  selectedFiles.value.splice(idx, 1);
+  uploadForm.excel_files = selectedFiles.value;
 };
 
 // Submit upload form
 const submitUpload = () => {
-  if (!uploadForm.file) return;
+  if (!uploadForm.excel_files || uploadForm.excel_files.length === 0) return;
 
   let finalPic = selectedPicOption.value;
   if (finalPic === '__custom__') {
@@ -210,14 +301,15 @@ const submitUpload = () => {
   }
   uploadForm.pic_nama = finalPic;
 
-  uploadForm.post('/uniforms/parse', {
+  uploadForm.post('/uniforms/import', {
     preserveScroll: true,
     onSuccess: () => {
       isUploadModalOpen.value = false;
       uploadForm.reset();
-      selectedFileName.value = '';
+      selectedFiles.value = [];
       selectedPicOption.value = '';
       customPicName.value = '';
+      primaryTab.value = 'recap';
     },
   });
 };
@@ -248,6 +340,78 @@ const downloadJson = () => {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
+
+// Riwayat Berkas Operations
+const goToBatchPage = (targetUrl) => {
+  if (!targetUrl) return;
+  try {
+    const urlObj = new URL(targetUrl, window.location.origin);
+    urlObj.searchParams.set('tab', 'batches');
+    router.get(urlObj.pathname + urlObj.search, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  } catch (e) {
+    router.get(targetUrl, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    });
+  }
+};
+
+const applyBatchFilters = () => {
+  router.get('/uniforms', {
+    tab: 'batches',
+    search: batchSearch.value || undefined,
+    school_id: selectedSchoolFilter.value || undefined,
+    pic: selectedPicFilter.value || undefined,
+  }, {
+    preserveState: true,
+    preserveScroll: true,
+    replace: true,
+  });
+};
+
+const resetBatchFilters = () => {
+  batchSearch.value = '';
+  selectedSchoolFilter.value = '';
+  selectedPicFilter.value = '';
+  router.get('/uniforms', { tab: 'batches' }, {
+    preserveState: true,
+    preserveScroll: true,
+    replace: true,
+  });
+};
+
+const viewBatch = (batch) => {
+  primaryTab.value = 'recap';
+  router.get('/uniforms', { batch_id: batch.id, tab: 'recap' }, {
+    preserveState: true,
+    preserveScroll: true,
+  });
+};
+
+const deleteBatch = (batchId, batchName) => {
+  if (confirm(`Apakah Anda yakin ingin menghapus berkas "${batchName || 'ini'}" beserta data seragamnya?`)) {
+    router.delete(`/uniforms/batches/${batchId}`, {
+      preserveScroll: true,
+    });
+  }
+};
+
+const syncAllFromStorage = () => {
+  if (confirm('Apakah Anda yakin ingin menyinkronkan ulang seluruh berkas seragam dari storage? Sistem akan membaca ulang file Excel asli di storage.')) {
+    isSyncing.value = true;
+    router.post('/uniforms/sync-storage', {}, {
+      preserveScroll: true,
+      onFinish: () => {
+        isSyncing.value = false;
+      },
+    });
+  }
+};
 </script>
 
 <template>
@@ -259,7 +423,7 @@ const downloadJson = () => {
 
     <!-- Main Content Container -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      <!-- Breadcrumb & Status Tag -->
+      <!-- Breadcrumb & Top Bar -->
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -277,15 +441,24 @@ const downloadJson = () => {
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex items-center gap-2.5 shrink-0">
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
           <button
             type="button"
             @click="isUploadModalOpen = true"
-            class="px-4 py-2.5 rounded-xl font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer"
+            class="px-4 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white shadow-md shadow-indigo-500/20 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
           >
             <UploadCloud class="w-4 h-4" />
             <span>Import Excel Seragam</span>
           </button>
+
+          <a
+            :href="`/uniforms/export/excel${filters.school_id ? '?school_id=' + filters.school_id : (initialRecap.batch_id ? '?batch_id=' + initialRecap.batch_id : '')}`"
+            class="px-3.5 py-2.5 rounded-xl font-medium text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xs active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+            title="Export Rekapitulasi ke Excel (.xlsx)"
+          >
+            <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Export Excel</span>
+          </a>
 
           <button
             type="button"
@@ -307,7 +480,7 @@ const downloadJson = () => {
             title="Unduh berkas JSON"
           >
             <Download class="w-4 h-4 text-slate-400" />
-            <span>Unduh</span>
+            <span>Unduh JSON</span>
           </button>
         </div>
       </div>
@@ -319,421 +492,673 @@ const downloadJson = () => {
       >
         <CheckCircle2 class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
         <div class="text-sm">
-          <p class="font-semibold">Berhasil Mengimpor Berkas</p>
+          <p class="font-semibold">Berhasil</p>
           <p class="mt-0.5 text-emerald-700 dark:text-emerald-400">{{ $page.props.flash.success }}</p>
         </div>
       </div>
 
-      <!-- Overview Metric Cards (5 Cards) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <!-- School Card -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
-          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Satuan Pendidikan</span>
-            <SchoolIcon class="w-4 h-4 text-indigo-500" />
-          </div>
-          <div class="mt-2">
-            <span class="text-base font-bold text-slate-900 dark:text-white truncate block" :title="schoolName">
-              {{ schoolName }}
-            </span>
-            <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-mono mt-0.5 block">
-              Awalan SRD / SRMP / SRMA
-            </span>
-          </div>
-        </div>
-
-        <!-- PIC Card -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
-          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Penanggung Jawab (PIC)</span>
-            <UserCheck class="w-4 h-4 text-emerald-500" />
-          </div>
-          <div class="mt-2">
-            <span v-if="picNama" class="text-base font-bold text-slate-900 dark:text-white truncate block flex items-center gap-1.5" :title="picNama">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-              {{ picNama }}
-            </span>
-            <span v-else class="text-sm text-slate-400 italic block">
-              Belum ditentukan
-            </span>
-            <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
-              {{ picNama ? 'PIC Terkonfirmasi' : 'Pilih saat import' }}
-            </span>
-          </div>
-        </div>
-
-        <!-- File Name Card -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
-          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Berkas Sumber</span>
-            <FileSpreadsheet class="w-4 h-4 text-emerald-500" />
-          </div>
-          <div class="mt-2">
-            <span class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate block font-mono" :title="fileName">
-              {{ fileName }}
-            </span>
-            <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
-              Header 1-2 | Data Baris 3
-            </span>
-          </div>
-        </div>
-
-        <!-- Total Recipients Card -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
-          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Total Penerima Seragam</span>
-            <Users class="w-4 h-4 text-purple-500" />
-          </div>
-          <div class="mt-2 flex items-baseline gap-2">
-            <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              {{ totalRows.toLocaleString('id-ID') }}
-            </span>
-            <span class="text-xs text-slate-500 dark:text-slate-400">orang</span>
-          </div>
-        </div>
-
-        <!-- Category Count Card -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
-          <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Kategori Sheet</span>
-            <Sparkles class="w-4 h-4 text-amber-500" />
-          </div>
-          <div class="mt-2">
-            <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              9
-            </span>
-            <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori</span>
-          </div>
+      <!-- Flash Notification Error -->
+      <div
+        v-if="$page.props.flash?.error"
+        class="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 flex items-start gap-3 text-rose-800 dark:text-rose-300"
+      >
+        <AlertCircle class="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+        <div class="text-sm">
+          <p class="font-semibold">Pemberitahuan</p>
+          <p class="mt-0.5 text-rose-700 dark:text-rose-400">{{ $page.props.flash.error }}</p>
         </div>
       </div>
 
-      <!-- Categories Tab Navigation -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-2 shadow-xs">
-        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
-          <button
-            v-for="s in sheetsList"
-            :key="s.key"
-            type="button"
-            @click="activeTab = s.key"
-            class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0"
-            :class="[
-              activeTab === s.key
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80'
-            ]"
-          >
-            <span>{{ s.label }}</span>
-            <span
-              class="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-              :class="activeTab === s.key ? 'bg-indigo-700/80 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'"
+      <!-- PRIMARY NAVIGATION TABS (MATCHING USER SCREENSHOT) -->
+      <div class="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+        <button
+          @click="switchPrimaryTab('recap')"
+          class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
+          :class="primaryTab === 'recap' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        >
+          <FileSpreadsheet class="w-4 h-4" />
+          Rekapitulasi Ukuran Seragam
+          <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono">
+            {{ totalRows }} Penerima
+          </span>
+        </button>
+
+        <button
+          @click="switchPrimaryTab('batches')"
+          class="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer"
+          :class="primaryTab === 'batches' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        >
+          <Layers class="w-4 h-4" />
+          Riwayat Berkas File
+          <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+            {{ totalBatchesCount }} Berkas
+          </span>
+        </button>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 1: REKAPITULASI UKURAN SERAGAM         -->
+      <!-- ========================================== -->
+      <div v-if="primaryTab === 'recap'" class="space-y-6">
+        <!-- Overview Metric Cards (5 Cards) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <!-- School Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Satuan Pendidikan</span>
+              <SchoolIcon class="w-4 h-4 text-indigo-500" />
+            </div>
+            <div class="mt-2">
+              <span class="text-base font-bold text-slate-900 dark:text-white truncate block" :title="schoolName">
+                {{ schoolName }}
+              </span>
+              <span class="text-[11px] text-indigo-600 dark:text-indigo-400 font-mono mt-0.5 block">
+                Awalan SRD / SRMP / SRMA
+              </span>
+            </div>
+          </div>
+
+          <!-- PIC Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Penanggung Jawab (PIC)</span>
+              <UserCheck class="w-4 h-4 text-emerald-500" />
+            </div>
+            <div class="mt-2">
+              <span v-if="picNama" class="text-base font-bold text-slate-900 dark:text-white truncate block flex items-center gap-1.5" :title="picNama">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                {{ picNama }}
+              </span>
+              <span v-else class="text-sm text-slate-400 italic block">
+                Belum ditentukan
+              </span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                {{ picNama ? 'PIC Terkonfirmasi' : 'Pilih saat import' }}
+              </span>
+            </div>
+          </div>
+
+          <!-- File Name Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Berkas Sumber</span>
+              <FileSpreadsheet class="w-4 h-4 text-emerald-500" />
+            </div>
+            <div class="mt-2">
+              <span class="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate block font-mono" :title="fileName">
+                {{ fileName }}
+              </span>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                Header 1-2 | Data Baris 3
+              </span>
+            </div>
+          </div>
+
+          <!-- Total Recipients Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Total Penerima Seragam</span>
+              <Users class="w-4 h-4 text-purple-500" />
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+              <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                {{ totalRows.toLocaleString('id-ID') }}
+              </span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">orang</span>
+            </div>
+          </div>
+
+          <!-- Category Count Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>Kategori Sheet</span>
+              <Sparkles class="w-4 h-4 text-amber-500" />
+            </div>
+            <div class="mt-2">
+              <span class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                9
+              </span>
+              <span class="text-xs text-slate-500 dark:text-slate-400 ml-1">Kategori</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categories Tab Navigation (9 Sheets + Format JSON) -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-2 shadow-xs">
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
+            <button
+              v-for="s in sheetsList"
+              :key="s.key"
+              type="button"
+              @click="activeTab = s.key"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer shrink-0"
+              :class="[
+                activeTab === s.key
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80'
+              ]"
             >
-              {{ getSheetCount(s.key) }}
-            </span>
-          </button>
+              <span>{{ s.label }}</span>
+              <span
+                class="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                :class="activeTab === s.key ? 'bg-indigo-700/80 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'"
+              >
+                {{ getSheetCount(s.key) }}
+              </span>
+            </button>
 
-          <!-- Raw JSON View Tab -->
-          <button
-            type="button"
-            @click="activeTab = 'RAW_JSON'"
-            class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto"
-            :class="[
-              activeTab === 'RAW_JSON'
-                ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80'
-            ]"
-          >
-            <FileCode class="w-3.5 h-3.5" />
-            <span>Format JSON</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Table Section when a normal sheet is selected -->
-      <div v-if="activeTab !== 'RAW_JSON'" class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-xs overflow-hidden">
-        <!-- Table Toolbar -->
-        <div class="p-4 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50">
-          <div class="flex items-center gap-3">
-            <h2 class="text-base font-bold text-slate-900 dark:text-white">
-              Data Sheet: {{ activeTab }}
-            </h2>
-            <span class="text-xs px-2.5 py-0.5 rounded-full font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
-              {{ totalFiltered }} penerima (Maks. {{ perPage }} / hal)
-            </span>
-            <span v-if="activeTab === 'GURU BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
-              *Sheet GURU tunggal otomatis masuk ke sini
-            </span>
-            <span v-if="activeTab === 'TENDIK BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
-              *Sheet TENDIK tunggal otomatis masuk ke sini
-            </span>
-            <span v-if="activeTab === 'SATPAM'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800/60">
-              *Dilengkapi Ukuran Sepatu PDH
-            </span>
+            <!-- Raw JSON View Tab -->
+            <button
+              type="button"
+              @click="activeTab = 'RAW_JSON'"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ml-auto"
+              :class="[
+                activeTab === 'RAW_JSON'
+                  ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80'
+              ]"
+            >
+              <FileCode class="w-3.5 h-3.5" />
+              <span>Format JSON</span>
+            </button>
           </div>
+        </div>
 
-          <!-- Filters -->
-          <div class="flex items-center gap-2">
-            <div class="relative">
-              <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="Cari nama / status..."
-                class="pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
-              />
+        <!-- Table Section when a normal sheet is selected -->
+        <div v-if="activeTab !== 'RAW_JSON'" class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-xs overflow-hidden">
+          <!-- Table Toolbar -->
+          <div class="p-4 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+            <div class="flex items-center gap-3">
+              <h2 class="text-base font-bold text-slate-900 dark:text-white">
+                Data Sheet: {{ activeTab }}
+              </h2>
+              <span class="text-xs px-2.5 py-0.5 rounded-full font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                {{ totalFiltered }} penerima (Maks. {{ perPage }} / hal)
+              </span>
+              <span v-if="activeTab === 'GURU BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
+                *Sheet GURU tunggal otomatis masuk ke sini
+              </span>
+              <span v-if="activeTab === 'TENDIK BARU'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800/60">
+                *Sheet TENDIK tunggal otomatis masuk ke sini
+              </span>
+              <span v-if="activeTab === 'SATPAM'" class="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-800/60">
+                *Dilengkapi Ukuran Sepatu PDH
+              </span>
             </div>
 
-            <select
-              v-model="filterGender"
-              class="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
-            >
-              <option value="">Semua L/P</option>
-              <option value="L">Laki-laki (L)</option>
-              <option value="P">Perempuan (P)</option>
-            </select>
-          </div>
-        </div>
+            <!-- Filters -->
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  placeholder="Cari nama / status..."
+                  class="pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
 
-        <!-- Responsive Table -->
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse text-xs">
-            <thead>
-              <!-- Group Headers -->
-              <tr class="bg-slate-100/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                <th colspan="4" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800">INFORMASI DASAR</th>
-                <th colspan="2" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
-                  ATASAN
-                </th>
-                <th :colspan="activeTab === 'SATPAM' ? 4 : 3" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800 bg-purple-50/50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300">
-                  BAWAHAN
-                </th>
-                <th class="py-2 px-3 font-semibold text-center">VENDOR</th>
-              </tr>
-
-              <!-- Column Label Headers -->
-              <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider bg-slate-50 dark:bg-slate-900">
-                <th class="py-2.5 px-3 w-12 text-center">No</th>
-                <th class="py-2.5 px-4 min-w-[180px]">Nama Lengkap</th>
-                <th class="py-2.5 px-3 text-center">JK</th>
-                <th v-if="activeTab === 'SISWA'" class="py-2.5 px-3">Jenjang</th>
-                <th v-else-if="activeTab !== 'KEPSEK'" class="py-2.5 px-3">Status</th>
-                <th v-else class="py-2.5 px-3 text-slate-400">-</th>
-
-                <!-- Atasan -->
-                <th class="py-2.5 px-3 text-center bg-indigo-50/30 dark:bg-indigo-950/10">Lingkar Badan (cm)</th>
-                <th class="py-2.5 px-3 text-center bg-indigo-50/30 dark:bg-indigo-950/10">Panjang Badan (cm)</th>
-
-                <!-- Bawahan -->
-                <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Lingkar Pinggang (cm)</th>
-                <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Panjang Celana (cm)</th>
-                <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Panjang Pesak (cm)</th>
-                <th v-if="activeTab === 'SATPAM'" class="py-2.5 px-3 text-center bg-purple-100/50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-                  Sepatu PDH
-                </th>
-
-                <!-- Vendor -->
-                <th class="py-2.5 px-3 text-center">Konversi Vendor</th>
-              </tr>
-            </thead>
-
-            <tbody class="divide-y divide-slate-100 dark:divide-slate-800/70">
-              <tr
-                v-for="(row, idx) in paginatedSheetRows"
-                :key="idx"
-                class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+              <select
+                v-model="filterGender"
+                class="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
               >
-                <td class="py-2 px-3 text-center font-mono text-slate-500 dark:text-slate-400">
-                  {{ row.no ?? (fromIndex + idx) }}
-                </td>
-
-                <td class="py-2 px-4 font-medium text-slate-900 dark:text-white">
-                  {{ row.nama_lengkap || '-' }}
-                </td>
-
-                <td class="py-2 px-3 text-center">
-                  <span
-                    class="px-2 py-0.5 rounded-md text-[10px] font-bold"
-                    :class="row.jenis_kelamin === 'L' ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'"
-                  >
-                    {{ row.jenis_kelamin || '-' }}
-                  </span>
-                </td>
-
-                <td class="py-2 px-3 text-slate-600 dark:text-slate-300">
-                  <span v-if="activeTab === 'SISWA'" class="font-medium">
-                    {{ row.jenjang || '-' }}
-                  </span>
-                  <span v-else-if="activeTab !== 'KEPSEK'" class="font-medium text-slate-700 dark:text-slate-300">
-                    {{ row.status || '-' }}
-                  </span>
-                  <span v-else class="text-slate-400">-</span>
-                </td>
-
-                <!-- Atasan -->
-                <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-indigo-50/10">
-                  {{ row.atasan?.lingkar_badan_cm ?? '-' }}
-                </td>
-                <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-indigo-50/10">
-                  {{ row.atasan?.panjang_badan_cm ?? '-' }}
-                </td>
-
-                <!-- Bawahan -->
-                <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
-                  {{ row.bawahan?.lingkar_pinggang_cm ?? '-' }}
-                </td>
-                <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
-                  {{ row.bawahan?.panjang_celana_cm ?? '-' }}
-                </td>
-                <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
-                  {{ row.bawahan?.panjang_pesak_cm ?? '-' }}
-                </td>
-
-                <!-- Ukuran Sepatu PDH (Satpam only) -->
-                <td v-if="activeTab === 'SATPAM'" class="py-2 px-3 text-center font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/40 dark:bg-indigo-950/40">
-                  {{ row.bawahan?.ukuran_sepatu_pdh ?? '-' }}
-                </td>
-
-                <!-- Konversi Vendor -->
-                <td class="py-2 px-3 text-center">
-                  <span
-                    v-if="row.konversi_vendor"
-                    class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-                  >
-                    {{ row.konversi_vendor }}
-                  </span>
-                  <span v-else class="text-slate-400">-</span>
-                </td>
-              </tr>
-
-              <!-- Empty State -->
-              <tr v-if="filteredRows.length === 0">
-                <td :colspan="activeTab === 'SATPAM' ? 11 : 10" class="py-12 text-center text-slate-400 dark:text-slate-500">
-                  <div class="flex flex-col items-center justify-center gap-2">
-                    <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
-                    <p class="text-sm font-medium">Tidak ada data untuk sheet "{{ activeTab }}".</p>
-                    <p class="text-xs text-slate-400">Silakan unggah berkas Excel ukuran seragam untuk mengisi data rekapitulasi.</p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination Controls Matching Exact User Design -->
-        <div v-if="totalFiltered > 0" class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 border-t border-slate-200/80 dark:border-slate-800/80 text-xs bg-slate-50/50 dark:bg-slate-900/50">
-          <!-- Text Info -->
-          <div class="text-slate-500 dark:text-slate-400">
-            Menampilkan <span class="font-semibold text-slate-700 dark:text-slate-200">{{ fromIndex }}</span> - <span class="font-semibold text-slate-700 dark:text-slate-200">{{ toIndex }}</span> dari <span class="font-semibold text-slate-700 dark:text-slate-200">{{ totalFiltered }}</span> penerima
+                <option value="">Semua L/P</option>
+                <option value="L">Laki-laki (L)</option>
+                <option value="P">Perempuan (P)</option>
+              </select>
+            </div>
           </div>
 
-          <!-- Page Navigation Buttons -->
-          <div v-if="totalPages > 1" class="flex items-center gap-1 flex-wrap justify-center">
-            <!-- Previous Button -->
-            <button
-              type="button"
-              :disabled="currentPage === 1"
-              @click="currentPage = Math.max(1, currentPage - 1)"
-              class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              &laquo; Previous
-            </button>
+          <!-- Responsive Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <!-- Group Headers -->
+                <tr class="bg-slate-100/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                  <th colspan="4" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800">INFORMASI DASAR</th>
+                  <th colspan="2" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300">
+                    ATASAN
+                  </th>
+                  <th :colspan="activeTab === 'SATPAM' ? 4 : 3" class="py-2 px-3 font-semibold text-center border-r border-slate-200 dark:border-slate-800 bg-purple-50/50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300">
+                    BAWAHAN
+                  </th>
+                  <th class="py-2 px-3 font-semibold text-center">VENDOR</th>
+                </tr>
 
-            <!-- Page Number Buttons & Ellipsis -->
-            <template v-for="(item, idx) in paginationLinks" :key="idx">
-              <span v-if="item === '...'" class="px-2 py-1.5 text-slate-400 font-medium">...</span>
+                <!-- Column Label Headers -->
+                <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider bg-slate-50 dark:bg-slate-900">
+                  <th class="py-2.5 px-3 w-12 text-center">No</th>
+                  <th class="py-2.5 px-4 min-w-[180px]">Nama Lengkap</th>
+                  <th class="py-2.5 px-3 text-center">JK</th>
+                  <th v-if="activeTab === 'SISWA'" class="py-2.5 px-3">Jenjang</th>
+                  <th v-else-if="activeTab !== 'KEPSEK'" class="py-2.5 px-3">Status</th>
+                  <th v-else class="py-2.5 px-3 text-slate-400">-</th>
+
+                  <!-- Atasan -->
+                  <th class="py-2.5 px-3 text-center bg-indigo-50/30 dark:bg-indigo-950/10">Lingkar Badan (cm)</th>
+                  <th class="py-2.5 px-3 text-center bg-indigo-50/30 dark:bg-indigo-950/10">Panjang Badan (cm)</th>
+
+                  <!-- Bawahan -->
+                  <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Lingkar Pinggang (cm)</th>
+                  <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Panjang Celana (cm)</th>
+                  <th class="py-2.5 px-3 text-center bg-purple-50/30 dark:bg-purple-950/10">Panjang Pesak (cm)</th>
+                  <th v-if="activeTab === 'SATPAM'" class="py-2.5 px-3 text-center bg-purple-100/50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                    Sepatu PDH
+                  </th>
+
+                  <!-- Vendor -->
+                  <th class="py-2.5 px-3 text-center">Konversi Vendor</th>
+                </tr>
+              </thead>
+
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-800/70">
+                <tr
+                  v-for="(row, idx) in paginatedSheetRows"
+                  :key="idx"
+                  class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <td class="py-2 px-3 text-center font-mono text-slate-500 dark:text-slate-400">
+                    {{ row.no ?? (fromIndex + idx) }}
+                  </td>
+
+                  <td class="py-2 px-4 font-medium text-slate-900 dark:text-white">
+                    {{ row.nama_lengkap || '-' }}
+                  </td>
+
+                  <td class="py-2 px-3 text-center">
+                    <span
+                      class="px-2 py-0.5 rounded-md text-[10px] font-bold"
+                      :class="row.jenis_kelamin === 'L' ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'"
+                    >
+                      {{ row.jenis_kelamin || '-' }}
+                    </span>
+                  </td>
+
+                  <td class="py-2 px-3 text-slate-600 dark:text-slate-300">
+                    <span v-if="activeTab === 'SISWA'" class="font-medium">
+                      {{ row.jenjang || '-' }}
+                    </span>
+                    <span v-else-if="activeTab !== 'KEPSEK'" class="font-medium text-slate-700 dark:text-slate-300">
+                      {{ row.status || '-' }}
+                    </span>
+                    <span v-else class="text-slate-400">-</span>
+                  </td>
+
+                  <!-- Atasan -->
+                  <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-indigo-50/10">
+                    {{ row.atasan?.lingkar_badan_cm ?? '-' }}
+                  </td>
+                  <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-indigo-50/10">
+                    {{ row.atasan?.panjang_badan_cm ?? '-' }}
+                  </td>
+
+                  <!-- Bawahan -->
+                  <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
+                    {{ row.bawahan?.lingkar_pinggang_cm ?? '-' }}
+                  </td>
+                  <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
+                    {{ row.bawahan?.panjang_celana_cm ?? '-' }}
+                  </td>
+                  <td class="py-2 px-3 text-center font-mono font-medium text-slate-800 dark:text-slate-200 bg-purple-50/10">
+                    {{ row.bawahan?.panjang_pesak_cm ?? '-' }}
+                  </td>
+
+                  <!-- Ukuran Sepatu PDH (Satpam only) -->
+                  <td v-if="activeTab === 'SATPAM'" class="py-2 px-3 text-center font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/40 dark:bg-indigo-950/40">
+                    {{ row.bawahan?.ukuran_sepatu_pdh ?? '-' }}
+                  </td>
+
+                  <!-- Konversi Vendor -->
+                  <td class="py-2 px-3 text-center">
+                    <span
+                      v-if="row.konversi_vendor"
+                      class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
+                    >
+                      {{ row.konversi_vendor }}
+                    </span>
+                    <span v-else class="text-slate-400">-</span>
+                  </td>
+                </tr>
+
+                <!-- Empty State -->
+                <tr v-if="filteredRows.length === 0">
+                  <td :colspan="activeTab === 'SATPAM' ? 11 : 10" class="py-12 text-center text-slate-400 dark:text-slate-500">
+                    <div class="flex flex-col items-center justify-center gap-2">
+                      <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
+                      <p class="text-sm font-medium">Tidak ada data untuk sheet "{{ activeTab }}".</p>
+                      <p class="text-xs text-slate-400">Silakan unggah berkas Excel ukuran seragam untuk mengisi data rekapitulasi.</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Controls Matching User Design -->
+          <div v-if="totalFiltered > 0" class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 border-t border-slate-200/80 dark:border-slate-800/80 text-xs bg-slate-50/50 dark:bg-slate-900/50">
+            <!-- Text Info -->
+            <div class="text-slate-500 dark:text-slate-400">
+              Menampilkan <span class="font-semibold text-slate-700 dark:text-slate-200">{{ fromIndex }}</span> - <span class="font-semibold text-slate-700 dark:text-slate-200">{{ toIndex }}</span> dari <span class="font-semibold text-slate-700 dark:text-slate-200">{{ totalFiltered }}</span> penerima
+            </div>
+
+            <!-- Page Navigation Buttons -->
+            <div v-if="totalPages > 1" class="flex items-center gap-1 flex-wrap justify-center">
+              <!-- Previous Button -->
               <button
-                v-else
                 type="button"
-                @click="currentPage = item"
-                class="min-w-[34px] px-2.5 py-1.5 rounded-lg border font-semibold transition-all cursor-pointer text-center"
-                :class="currentPage === item 
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
+                :disabled="currentPage === 1"
+                @click="currentPage = Math.max(1, currentPage - 1)"
+                class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
-                {{ item }}
+                &laquo; Previous
               </button>
-            </template>
 
-            <!-- Next Button -->
-            <button
-              type="button"
-              :disabled="currentPage === totalPages"
-              @click="currentPage = Math.min(totalPages, currentPage + 1)"
-              class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              Next &raquo;
-            </button>
+              <!-- Page Number Buttons & Ellipsis -->
+              <template v-for="(item, idx) in paginationLinks" :key="idx">
+                <span v-if="item === '...'" class="px-2 py-1.5 text-slate-400 font-medium">...</span>
+                <button
+                  v-else
+                  type="button"
+                  @click="currentPage = item"
+                  class="min-w-[34px] px-2.5 py-1.5 rounded-lg border font-semibold transition-all cursor-pointer text-center"
+                  :class="currentPage === item 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
+                >
+                  {{ item }}
+                </button>
+              </template>
+
+              <!-- Next Button -->
+              <button
+                type="button"
+                :disabled="currentPage === totalPages"
+                @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Next &raquo;
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Raw JSON Viewer -->
+        <div v-else class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl shadow-xs overflow-hidden">
+          <div class="p-4 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileCode class="w-4 h-4 text-indigo-500" />
+                Output Rekapitulasi JSON Sesuai Spesifikasi
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Struktur JSON 9 sheet lengkap dengan konversi atasan, bawahan, dan vendor.
+              </p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="copyJson"
+                class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check v-if="isCopied" class="w-3.5 h-3.5 text-emerald-500" />
+                <Copy v-else class="w-3.5 h-3.5 text-slate-400" />
+                <span>{{ isCopied ? 'Tersalin' : 'Salin JSON' }}</span>
+              </button>
+              <button
+                type="button"
+                @click="downloadJson"
+                class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download class="w-3.5 h-3.5" />
+                <span>Unduh .json</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="p-4 bg-slate-950 text-slate-200 font-mono text-xs overflow-x-auto max-h-[600px] leading-relaxed">
+            <pre>{{ formattedJson }}</pre>
           </div>
         </div>
       </div>
 
-      <!-- Raw JSON View Section -->
-      <div v-else class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-xs space-y-3">
-        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-          <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <FileCode class="w-4 h-4 text-indigo-500" />
-              <span>Format JSON Rekapitulasi Seragam</span>
-            </h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400">
-              Output terstandarisasi untuk 9 sheets lengkap dengan objek struktur dan array data.
-            </p>
+      <!-- ========================================== -->
+      <!-- TAB 2: RIWAYAT BERKAS FILE IMPORT          -->
+      <!-- ========================================== -->
+      <div v-if="primaryTab === 'batches'" class="space-y-6">
+        <div>
+          <!-- Header and Sync Button -->
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-base font-bold text-slate-900 dark:text-white">
+                Riwayat Berkas File yang Di-Import
+              </h2>
+              <p class="text-xs text-slate-500">Berkas Excel asli tersimpan aman di server storage dan siap disinkronkan kapan saja.</p>
+            </div>
+
+            <button
+              type="button"
+              @click="syncAllFromStorage"
+              :disabled="isSyncing"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-50"
+              title="Baca ulang semua berkas Excel di storage dan perbarui data jika ada perubahan"
+            >
+              <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isSyncing }" />
+              <span>{{ isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Ulang dari Storage' }}</span>
+            </button>
           </div>
 
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              @click="copyJson"
-              class="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Check v-if="isCopied" class="w-3.5 h-3.5 text-emerald-500" />
-              <Copy v-else class="w-3.5 h-3.5 text-slate-500" />
-              <span>{{ isCopied ? 'Tersalin' : 'Salin JSON' }}</span>
-            </button>
-            <button
-              type="button"
-              @click="downloadJson"
-              class="px-3 py-1.5 rounded-xl text-xs font-medium bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Download class="w-3.5 h-3.5" />
-              <span>Unduh .json</span>
-            </button>
+          <!-- Filter Toolbar for Batches -->
+          <div class="p-3 mb-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-2 flex-1 min-w-[240px]">
+              <div class="relative flex-1">
+                <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  v-model="batchSearch"
+                  type="text"
+                  placeholder="Cari nama berkas atau nama sekolah..."
+                  @keyup.enter="applyBatchFilters"
+                  class="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <select
+                v-model="selectedPicFilter"
+                @change="applyBatchFilters"
+                class="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+              >
+                <option value="">Semua PIC Ukur</option>
+                <option v-for="p in picList" :key="p" :value="p">👤 {{ p }}</option>
+              </select>
+
+              <button
+                type="button"
+                @click="applyBatchFilters"
+                class="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer"
+              >
+                Cari
+              </button>
+
+              <button
+                v-if="batchSearch || selectedPicFilter || selectedSchoolFilter"
+                type="button"
+                @click="resetBatchFilters"
+                class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <!-- Batches Table -->
+          <div class="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-50 dark:bg-slate-800/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="py-3 px-4 w-52 max-w-[200px]">Nama File</th>
+                  <th class="py-3 px-4 min-w-[180px]">Sekolah</th>
+                  <th class="py-3 px-4 whitespace-nowrap">PIC Ukur</th>
+                  <th class="py-3 px-4 text-center whitespace-nowrap">Total Seragam</th>
+                  <th class="py-3 px-4 text-center whitespace-nowrap">Rincian (S / G / T / Staff)</th>
+                  <th class="py-3 px-4 whitespace-nowrap">Waktu Import</th>
+                  <th class="py-3 px-4 text-center w-24 whitespace-nowrap">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                <tr v-for="b in batchList" :key="b.id" class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                  <!-- Nama File -->
+                  <td class="py-3 px-4 max-w-[200px]" :title="b.file_name">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <FileSpreadsheet class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span class="font-mono text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                        {{ b.file_name }}
+                      </span>
+                    </div>
+                  </td>
+
+                  <!-- Sekolah -->
+                  <td class="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
+                    {{ b.school?.nama_sekolah || b.school_name || '-' }}
+                  </td>
+
+                  <!-- PIC -->
+                  <td class="py-3 px-4 whitespace-nowrap">
+                    <span
+                      v-if="b.pic_nama || b.school?.pic_nama"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60"
+                    >
+                      <UserCheck class="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                      {{ b.pic_nama || b.school?.pic_nama }}
+                    </span>
+                    <span v-else class="text-slate-400 italic text-xs">Belum diatur</span>
+                  </td>
+
+                  <!-- Total -->
+                  <td class="py-3 px-4 text-center font-bold text-indigo-600 dark:text-indigo-400 font-mono whitespace-nowrap">
+                    {{ b.total_rows }}
+                  </td>
+
+                  <!-- Breakdown -->
+                  <td class="py-3 px-4 text-center font-mono text-slate-500 whitespace-nowrap">
+                    {{ b.total_siswa }} / {{ b.total_guru_lama + b.total_guru_baru }} / {{ b.total_tendik_lama + b.total_tendik_baru }} / {{ b.total_satpam + b.total_kebersihan + b.total_dapur }}
+                  </td>
+
+                  <!-- Waktu -->
+                  <td class="py-3 px-4 text-slate-500 whitespace-nowrap">
+                    {{ new Date(b.created_at).toLocaleString('id-ID') }}
+                  </td>
+
+                  <!-- Aksi -->
+                  <td class="py-3 px-4 text-center whitespace-nowrap">
+                    <div class="flex items-center justify-center gap-1">
+                      <!-- View / Load Batch to Recap Tab -->
+                      <button
+                        type="button"
+                        @click="viewBatch(b)"
+                        class="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors cursor-pointer"
+                        title="Tampilkan Data Rekapitulasi Berkas Ini"
+                      >
+                        <Eye class="w-4 h-4" />
+                      </button>
+
+                      <!-- Download original file -->
+                      <a
+                        :href="`/uniforms/batches/${b.id}/download`"
+                        class="p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
+                        title="Unduh Berkas Excel Asli"
+                      >
+                        <Download class="w-4 h-4" />
+                      </a>
+
+                      <!-- Delete batch -->
+                      <button
+                        type="button"
+                        @click="deleteBatch(b.id, b.school_name || b.school?.nama_sekolah)"
+                        class="text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                        title="Hapus Batch Ini"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr v-if="batchList.length === 0">
+                  <td colspan="7" class="py-12 text-center text-slate-400 dark:text-slate-500">
+                    <div class="flex flex-col items-center justify-center gap-2">
+                      <AlertCircle class="w-8 h-8 text-slate-300 dark:text-slate-600" />
+                      <p class="text-sm font-medium">Belum ada berkas Excel seragam yang di-import ke server.</p>
+                      <p class="text-xs text-slate-400">Gunakan tombol "Import Excel Seragam" di atas untuk menambahkan berkas baru.</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Riwayat Berkas (15 per halaman) -->
+          <div
+            v-if="batches?.total && batches.total > batches.per_page"
+            class="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 pt-4 text-xs"
+          >
+            <div class="text-slate-500 dark:text-slate-400">
+              Menampilkan <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.from }}</span> - <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.to }}</span> dari <span class="font-semibold text-slate-700 dark:text-slate-200">{{ batches.total }}</span> berkas import
+            </div>
+
+            <div class="flex items-center gap-1 flex-wrap justify-center">
+              <template v-for="(link, lIdx) in batches.links" :key="lIdx">
+                <button
+                  v-if="link.url"
+                  type="button"
+                  @click="goToBatchPage(link.url)"
+                  class="px-3 py-1.5 rounded-lg border font-medium transition-colors cursor-pointer"
+                  :class="link.active 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'"
+                  v-html="link.label"
+                ></button>
+                <span v-else class="px-2 py-1.5 text-slate-400" v-html="link.label"></span>
+              </template>
+            </div>
           </div>
         </div>
-
-        <pre class="bg-slate-950 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto max-h-[600px] leading-relaxed select-all">{{ formattedJson }}</pre>
       </div>
     </main>
 
-    <!-- Upload Modal -->
+    <!-- ========================================== -->
+    <!-- MODAL: UPLOAD EXCEL FILE (MULTI & PIC)     -->
+    <!-- ========================================== -->
     <div
       v-if="isUploadModalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
     >
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
-        <button
-          type="button"
-          @click="isUploadModalOpen = false"
-          class="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          <X class="w-5 h-5" />
-        </button>
-
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-            <UploadCloud class="w-5 h-5" />
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative space-y-5">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <FileUp class="w-5 h-5" />
+            </div>
+            <div>
+              <h3 class="font-bold text-base text-slate-900 dark:text-white">Import File Excel Seragam SR</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Pilih berkas Excel (.xlsx / .xls) ukuran seragam SR.</p>
+            </div>
           </div>
-          <div>
-            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Import Rekapitulasi Seragam</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Pilih berkas Excel (.xlsx / .xls) ukuran seragam SR.</p>
-          </div>
+          <button
+            type="button"
+            @click="isUploadModalOpen = false"
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X class="w-5 h-5" />
+          </button>
         </div>
 
-        <form @submit.prevent="submitUpload" class="mt-6 space-y-4">
-          <!-- Pilihan Dropdown PIC (Penanggung Jawab) -->
+        <form @submit.prevent="submitUpload" class="space-y-4">
+          <!-- PIC Ukur Selector -->
           <div class="space-y-1.5">
             <div class="flex items-center justify-between">
-              <label class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <UserCheck class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <label class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Users class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>Penanggung Jawab / Nama PIC:</span>
                 <span class="text-rose-500">*</span>
               </label>
@@ -742,13 +1167,13 @@ const downloadJson = () => {
               </span>
             </div>
 
-            <div class="relative">
+            <div>
               <select
                 v-model="selectedPicOption"
                 class="w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs cursor-pointer"
               >
                 <option value="" disabled>-- Silakan Pilih Nama PIC Pengumpul Berkas --</option>
-                <optgroup label="Daftar Nama PIC Resmi Kemensos / Sekolah Rakyat">
+                <optgroup label="Daftar Master PIC Standar SR">
                   <option v-for="pic in picList" :key="pic" :value="pic">
                     👤 {{ pic }}
                   </option>
@@ -760,8 +1185,8 @@ const downloadJson = () => {
               </select>
             </div>
 
-            <!-- Input Manual jika memilih Custom -->
-            <div v-if="selectedPicOption === '__custom__'" class="pt-1">
+            <!-- Custom PIC input if selected -->
+            <div v-if="selectedPicOption === '__custom__'" class="mt-2">
               <input
                 v-model="customPicName"
                 type="text"
@@ -769,13 +1194,12 @@ const downloadJson = () => {
                 class="w-full px-3.5 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
               />
             </div>
-
             <p class="text-[11px] text-slate-500 dark:text-slate-400">
               Setiap data ukuran seragam yang di-import pada proses ini akan ditugaskan ke PIC yang dipilih.
             </p>
           </div>
 
-          <!-- Dropzone -->
+          <!-- File Upload Drag & Drop Area (Supports Multiple Files) -->
           <div
             @click="$refs.fileInput.click()"
             class="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-950/50 transition-colors"
@@ -783,34 +1207,59 @@ const downloadJson = () => {
             <input
               ref="fileInput"
               type="file"
+              multiple
               accept=".xlsx,.xls,.csv"
               @change="handleFileChange"
               class="hidden"
             />
             <FileSpreadsheet class="w-10 h-10 text-indigo-500 mx-auto" />
-            <p class="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-2">
-              {{ selectedFileName || 'Klik untuk memilih atau seret berkas ke sini' }}
+            <p class="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Klik untuk memilih atau seret satu atau banyak berkas Excel ke sini
             </p>
             <p class="text-xs text-slate-400 mt-1">
-              Mendukung: Data Ukuran Seragam SRMA 13 Bekasi (OK).xlsx, dsb.
+              Mendukung: Data Ukuran Seragam SRMA 13 Bekasi (OK).xlsx, dsb. (Bisa pilih sekaligus)
             </p>
           </div>
 
-          <!-- Notes Callout -->
-          <div class="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs space-y-1 text-slate-600 dark:text-slate-400">
-            <p class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+          <!-- Selected files list -->
+          <div v-if="selectedFiles.length > 0" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+            <div
+              v-for="(f, fIdx) in selectedFiles"
+              :key="fIdx"
+              class="flex items-center justify-between p-2 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs"
+            >
+              <div class="flex items-center gap-2 truncate">
+                <FileSpreadsheet class="w-4 h-4 text-emerald-600 shrink-0" />
+                <span class="font-medium text-slate-800 dark:text-slate-200 truncate">{{ f.name }}</span>
+                <span class="text-[10px] text-slate-400">({{ (f.size / 1024).toFixed(1) }} KB)</span>
+              </div>
+              <button
+                type="button"
+                @click.stop="removeFile(fIdx)"
+                class="text-rose-500 hover:text-rose-700 p-1"
+                title="Hapus"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Notes / Rules Reminder -->
+          <div class="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-3 text-xs text-indigo-900 dark:text-indigo-300 space-y-1">
+            <p class="font-semibold flex items-center gap-1.5">
               <Info class="w-3.5 h-3.5 text-indigo-500" />
               <span>Aturan Pemrosesan Otomatis:</span>
             </p>
-            <ul class="list-disc list-inside space-y-0.5 text-[11px]">
+            <ul class="list-disc list-inside space-y-0.5 text-[11px] text-indigo-800 dark:text-indigo-300">
               <li>Nama sekolah dideteksi otomatis dari awalan <strong>SRD</strong>, <strong>SRMP</strong>, atau <strong>SRMA</strong> pada nama berkas.</li>
               <li>Sheet dengan nama <strong>GURU</strong> saja otomatis masuk ke sheet <strong>GURU BARU</strong>.</li>
               <li>Sheet dengan nama <strong>TENDIK</strong> saja otomatis masuk ke sheet <strong>TENDIK BARU</strong>.</li>
+              <li>Berkas asli tersimpan aman di server dan riwayat berkas dapat diunduh / disinkronkan kembali kapan saja.</li>
             </ul>
           </div>
 
-          <!-- Submit Buttons -->
-          <div class="flex items-center justify-end gap-2.5 pt-2">
+          <!-- Action Buttons -->
+          <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               @click="isUploadModalOpen = false"
@@ -820,11 +1269,11 @@ const downloadJson = () => {
             </button>
             <button
               type="submit"
-              :disabled="!uploadForm.file || uploadForm.processing"
+              :disabled="selectedFiles.length === 0 || uploadForm.processing"
               class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
             >
               <UploadCloud class="w-4 h-4" />
-              <span>{{ uploadForm.processing ? 'Memproses...' : 'Mulai Import' }}</span>
+              <span>{{ uploadForm.processing ? 'Memproses Import...' : `Mulai Import (${selectedFiles.length} Berkas)` }}</span>
             </button>
           </div>
         </form>

@@ -2,8 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\School;
+use App\Models\UniformImportBatch;
+use App\Models\UniformRecipient;
 use Exception;
 use InvalidArgumentException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -704,6 +709,137 @@ class UniformExcelImportService
             default:
                 return (string)$val;
         }
+    }
+
+    /**
+     * Import and persist uniform recapitulation data from an Excel file into database.
+     *
+     * @param string $filePath Absolute path or storage relative path to the Excel file
+     * @param string $originalName Original file name
+     * @param int|null $userId User performing import
+     * @param string|null $selectedPic Explicitly selected PIC name
+     * @return array
+     */
+    public function import(string $filePath, string $originalName, ?int $userId = null, ?string $selectedPic = null): array
+    {
+        $realPath = $this->resolvePath($filePath);
+        $parsed = $this->parseWithMetadata($realPath, $originalName, $selectedPic);
+
+        $schoolName = $parsed['school_name'] ?: 'Sekolah Tidak Dikenal';
+        $finalPic = $parsed['pic_nama'];
+
+        // Determine persistent storage path for this batch
+        $storageDir = 'uniform_imports';
+        Storage::disk('local')->makeDirectory($storageDir);
+
+        $fileBaseName = preg_replace('/[^A-Za-z0-9._-]/', '_', $originalName);
+        $storedName = time() . '_' . uniqid() . '_' . $fileBaseName;
+        $storedRelative = $storageDir . '/' . $storedName;
+        $destinationPath = Storage::disk('local')->path($storedRelative);
+
+        // Copy original file if not already stored in destination
+        if ($realPath !== $destinationPath) {
+            @copy($realPath, $destinationPath);
+        }
+
+        return DB::transaction(function () use ($schoolName, $finalPic, $originalName, $storedRelative, $destinationPath, $userId, $parsed) {
+            $school = School::firstOrCreate(
+                ['nama_sekolah' => $schoolName],
+                [
+                    'pic_nama' => $finalPic,
+                    'status_konfirmasi' => 'terkonfirmasi',
+                ]
+            );
+
+            if ($finalPic && empty($school->pic_nama)) {
+                $school->update(['pic_nama' => $finalPic]);
+            }
+
+            $recap = $parsed['recapitulation'];
+            $sheetCounts = $parsed['sheet_counts'];
+
+            $batchData = [
+                'school_id' => $school->id,
+                'school_name' => $schoolName,
+                'file_name' => $originalName,
+                'file_path' => $storedRelative,
+                'pic_nama' => $finalPic,
+                'total_siswa' => $sheetCounts['SISWA'] ?? 0,
+                'total_kepsek' => $sheetCounts['KEPSEK'] ?? 0,
+                'total_guru_lama' => $sheetCounts['GURU LAMA'] ?? 0,
+                'total_guru_baru' => $sheetCounts['GURU BARU'] ?? 0,
+                'total_tendik_lama' => $sheetCounts['TENDIK LAMA'] ?? 0,
+                'total_tendik_baru' => $sheetCounts['TENDIK BARU'] ?? 0,
+                'total_satpam' => $sheetCounts['SATPAM'] ?? 0,
+                'total_kebersihan' => $sheetCounts['PETUGAS KEBERSIHAN'] ?? 0,
+                'total_dapur' => $sheetCounts['PETUGAS DAPUR'] ?? 0,
+                'total_rows' => $parsed['total_rows'],
+                'recap_data' => $parsed,
+                'imported_by' => $userId,
+                'notes' => ($finalPic ? "PIC: {$finalPic} | " : "") . "Diimpor pada " . now()->format('Y-m-d H:i:s'),
+            ];
+
+            // If same file was imported for this school, update batch
+            $existingBatch = UniformImportBatch::where('school_id', $school->id)
+                ->where(function ($q) use ($originalName) {
+                    $q->where('file_name', $originalName)
+                      ->orWhere('file_name', basename($originalName));
+                })
+                ->first();
+
+            if ($existingBatch) {
+                $existingBatch->recipients()->delete();
+                $existingBatch->update($batchData);
+                $batch = $existingBatch;
+            } else {
+                $batch = UniformImportBatch::create($batchData);
+            }
+
+            // Insert recipient rows
+            $insertRows = [];
+            foreach ($recap as $sheetName => $sheetInfo) {
+                foreach ($sheetInfo['data'] ?? [] as $row) {
+                    $insertRows[] = [
+                        'school_id' => $school->id,
+                        'batch_id' => $batch->id,
+                        'sheet_name' => $sheetName,
+                        'nomor_urut' => isset($row['no']) && is_numeric($row['no']) ? (int)$row['no'] : null,
+                        'nama_lengkap' => $row['nama_lengkap'] ?? '',
+                        'jenis_kelamin' => $row['jenis_kelamin'] ?? null,
+                        'jenjang' => $row['jenjang'] ?? null,
+                        'status' => $row['status'] ?? null,
+                        'lingkar_badan_cm' => isset($row['atasan']['lingkar_badan_cm']) && is_numeric($row['atasan']['lingkar_badan_cm']) ? (float)$row['atasan']['lingkar_badan_cm'] : null,
+                        'panjang_badan_cm' => isset($row['atasan']['panjang_badan_cm']) && is_numeric($row['atasan']['panjang_badan_cm']) ? (float)$row['atasan']['panjang_badan_cm'] : null,
+                        'lingkar_pinggang_cm' => isset($row['bawahan']['lingkar_pinggang_cm']) && is_numeric($row['bawahan']['lingkar_pinggang_cm']) ? (float)$row['bawahan']['lingkar_pinggang_cm'] : null,
+                        'panjang_celana_cm' => isset($row['bawahan']['panjang_celana_cm']) && is_numeric($row['bawahan']['panjang_celana_cm']) ? (float)$row['bawahan']['panjang_celana_cm'] : null,
+                        'panjang_pesak_cm' => isset($row['bawahan']['panjang_pesak_cm']) && is_numeric($row['bawahan']['panjang_pesak_cm']) ? (float)$row['bawahan']['panjang_pesak_cm'] : null,
+                        'ukuran_sepatu_pdh' => isset($row['bawahan']['ukuran_sepatu_pdh']) && is_numeric($row['bawahan']['ukuran_sepatu_pdh']) ? (int)$row['bawahan']['ukuran_sepatu_pdh'] : null,
+                        'konversi_vendor' => $row['konversi_vendor'] ?? null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+
+                    if (count($insertRows) >= 200) {
+                        UniformRecipient::insert($insertRows);
+                        $insertRows = [];
+                    }
+                }
+            }
+
+            if (!empty($insertRows)) {
+                UniformRecipient::insert($insertRows);
+            }
+
+            return [
+                'batch' => $batch,
+                'school_id' => $school->id,
+                'school_name' => $schoolName,
+                'total_rows' => $parsed['total_rows'],
+                'pic_nama' => $finalPic,
+                'sheet_counts' => $sheetCounts,
+                'recapitulation' => $parsed['recapitulation'],
+            ];
+        });
     }
 
     /**

@@ -51,4 +51,14 @@ class School extends Model
     {
         return $this->hasMany(ShoeRecipient::class);
     }
+
+    public function uniformBatches(): HasMany
+    {
+        return $this->hasMany(UniformImportBatch::class);
+    }
+
+    public function uniformRecipients(): HasMany
+    {
+        return $this->hasMany(UniformRecipient::class);
+    }
 }
