@@ -239,20 +239,25 @@ class UniformImportBatchTest extends TestCase
         $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
         $spreadsheet = $reader->load($tmpFile);
 
-        // Check SUMMARY sheet exists and is index 0
-        $this->assertEquals('SUMMARY', $spreadsheet->getSheet(0)->getTitle());
+        // Check Rekap Ukuran Seragam sheet exists and is index 0
+        $this->assertEquals('Rekap Ukuran Seragam', $spreadsheet->getSheet(0)->getTitle());
 
-        $summarySheet = $spreadsheet->getSheetByName('SUMMARY');
-        $this->assertNotNull($summarySheet);
+        $recapSheet = $spreadsheet->getSheetByName('Rekap Ukuran Seragam');
+        $this->assertNotNull($recapSheet);
 
-        // Check Title and Meta
-        $this->assertEquals('REKAPITULASI KEBUTUHAN DATA UKURAN SERAGAM SEKOLAH RAKYAT', $summarySheet->getCell('A2')->getValue());
-        $this->assertEquals('SRMA 13 Bekasi', $summarySheet->getCell('B5')->getValue());
-        $this->assertEquals('YULIA', $summarySheet->getCell('B6')->getValue());
+        // Check Title and Scope
+        $this->assertEquals('REKAPITULASI KEBUTUHAN PENGADAAN SERAGAM', $recapSheet->getCell('A1')->getValue());
+        $this->assertStringContainsString('SRMA 13 BEKASI', (string)$recapSheet->getCell('A2')->getValue());
+
+        // Check Jenjang sheet exists
+        $this->assertNotNull($spreadsheet->getSheetByName('Rekap Jenjang SR'));
 
         // Check that category sheets are also present
         $this->assertNotNull($spreadsheet->getSheetByName('SISWA'));
         $this->assertNotNull($spreadsheet->getSheetByName('SATPAM'));
+
+        // Check that Master List sheet is present
+        $this->assertNotNull($spreadsheet->getSheetByName('Daftar Penerima'));
 
         $spreadsheet->disconnectWorksheets();
         unset($spreadsheet);
