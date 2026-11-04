@@ -624,17 +624,17 @@ const syncAllFromStorage = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
+  <div 
+    class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-all duration-300"
+    :class="layoutPaddingClass"
+  >
     <Head title="Rekapitulasi Ukuran Seragam - Sepatu SR" />
 
     <!-- Top Navigation Header -->
     <HybridNavbar currentRoute="uniforms" />
 
     <!-- Main Content Container (Full Width & Responsive with Sidebar) -->
-    <main 
-      class="flex-1 w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 space-y-6 transition-all duration-300"
-      :class="layoutPaddingClass"
-    >
+    <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <!-- Breadcrumb & Top Bar -->
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>

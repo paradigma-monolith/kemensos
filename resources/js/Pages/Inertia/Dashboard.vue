@@ -538,13 +538,13 @@ const gaugeOption = computed(() => {
 <template>
   <Head title="Inertia.js Bridge Dashboard & ECharts Analytics" />
 
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white transition-colors duration-200 overflow-x-clip">
+  <div 
+    class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white transition-all duration-300 overflow-x-clip"
+    :class="layoutPaddingClass"
+  >
     <HybridNavbar mode="inertia" currentRoute="dashboard" />
 
-    <main 
-      class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 space-y-8 transition-all duration-300"
-      :class="layoutPaddingClass"
-    >
+    <main class="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
       <!-- Top Banner -->
       <div class="relative overflow-hidden bg-gradient-to-r from-indigo-900/90 via-purple-900/80 to-slate-950 border border-indigo-700/40 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-xl text-white">

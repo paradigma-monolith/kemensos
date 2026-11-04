@@ -1,10 +1,10 @@
 {
-  "_echo-m84mJwQf.js": {
-    "file": "assets/echo-m84mJwQf.js",
+  "_echo-DeGyuzUq.js": {
+    "file": "assets/echo-DeGyuzUq.js",
     "name": "echo"
   },
   "resources/css/app.css": {
-    "file": "assets/app-CFPioHz7.css",
+    "file": "assets/app-DBo7H2-x.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -13,24 +13,24 @@
     ]
   },
   "resources/js/inertia.js": {
-    "file": "assets/inertia-C-UYLMb5.js",
+    "file": "assets/inertia-BhJkn64E.js",
     "name": "inertia",
     "src": "resources/js/inertia.js",
     "isEntry": true,
     "imports": [
-      "_echo-m84mJwQf.js"
+      "_echo-DeGyuzUq.js"
     ],
     "css": [
       "assets/inertia-D1alG36_.css"
     ]
   },
   "resources/js/spa.js": {
-    "file": "assets/spa-Bcnmvjsj.js",
+    "file": "assets/spa-B4j_t_0H.js",
     "name": "spa",
     "src": "resources/js/spa.js",
     "isEntry": true,
     "imports": [
-      "_echo-m84mJwQf.js"
+      "_echo-DeGyuzUq.js"
     ],
     "css": [
       "assets/spa-uzPedPDe.css"

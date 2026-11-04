@@ -55,6 +55,14 @@ const activeNav = computed(() => {
   return '';
 });
 
+const activeNavTitle = computed(() => {
+  if (activeNav.value === 'uniforms') return 'Rekapitulasi Seragam';
+  if (activeNav.value === 'shoes') return 'Rekapitulasi Sepatu';
+  if (activeNav.value === 'audit') return 'Audit Trail Logs';
+  if (activeNav.value === 'profile') return 'Profil Akun';
+  return 'Dashboard Analitik';
+});
+
 // Brand pill badge
 const brandBadge = {
   text: 'Sistem Rekapitulasi',
@@ -249,14 +257,12 @@ const handleLogout = () => {
 </script>
 
 <template>
-  <header 
-    class="sticky top-0 z-30 w-full backdrop-blur-xl bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/80 dark:border-slate-800/80 transition-all duration-300"
-    :class="layoutPaddingClass"
-  >
-    <div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10">
+  <header class="sticky top-0 z-30 w-full backdrop-blur-xl bg-white/85 dark:bg-slate-950/85 border-b border-slate-200/80 dark:border-slate-800/80 transition-colors duration-200">
+    <div class="w-full px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
-        <!-- Sidebar Trigger & Brand -->
-        <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <!-- Sidebar Trigger & Breadcrumb / Brand -->
+        <div class="flex items-center gap-3 shrink-0">
+          <!-- Toggle Sidebar Button (Collapse on Desktop / Open Drawer on Mobile) -->
           <button
             type="button"
             @click="toggleSidebar"
@@ -266,57 +272,26 @@ const handleLogout = () => {
             <Menu class="w-4 h-4 transition-transform group-hover:scale-110" />
           </button>
 
-          <a :href="getUrl('/')" @click="handleNav('/', $event)" class="flex items-center gap-2 sm:gap-2.5 group cursor-pointer shrink-0">
-            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-black text-white shadow-lg transition-all duration-300 shrink-0"
+          <!-- Desktop Section Breadcrumb -->
+          <div class="hidden lg:flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <span class="font-bold text-slate-900 dark:text-white text-sm tracking-tight">Sepatu SR</span>
+            <span>/</span>
+            <span class="px-2.5 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/80 dark:border-indigo-800/80 font-mono text-[11px]">
+              {{ activeNavTitle }}
+            </span>
+          </div>
+
+          <!-- Mobile Brand Logo -->
+          <a :href="getUrl('/')" @click="handleNav('/', $event)" class="flex items-center gap-2 group cursor-pointer shrink-0 lg:hidden">
+            <div class="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white shadow-lg transition-all"
               :class="brandBadge.iconClass">
-              <span class="text-xs sm:text-sm tracking-wider">SR</span>
+              <span class="text-xs tracking-wider">SR</span>
             </div>
-            <div class="flex items-center whitespace-nowrap">
-              <span class="hidden min-[420px]:inline-block text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors whitespace-nowrap">
-                Sepatu SR
-              </span>
-              <span class="hidden xl:inline-block ml-2 text-xs px-2.5 py-0.5 rounded-full font-mono font-medium border transition-colors whitespace-nowrap"
-                :class="brandBadge.badgeClass">
-                {{ brandBadge.text }}
-              </span>
-            </div>
+            <span class="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+              Sepatu SR
+            </span>
           </a>
         </div>
-
-        <!-- Navigation Links: Dashboard, Sepatu SR & Audit Trail -->
-        <nav class="hidden md:flex items-center gap-1.5 lg:gap-2 text-xs font-medium shrink-0">
-          <a :href="getUrl('/')" 
-            @click="handleNav('/', $event)"
-            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
-            :class="activeNav === 'dashboard' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold ring-1 ring-indigo-300 dark:ring-indigo-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-            <LayoutDashboard class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Dashboard</span>
-          </a>
-
-          <a :href="getUrl('/shoes')" 
-            @click="handleNav('/shoes', $event)"
-            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
-            :class="activeNav === 'shoes' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold ring-1 ring-emerald-300 dark:ring-emerald-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-            <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Rekap Sepatu</span>
-          </a>
-
-          <a :href="getUrl('/uniforms')" 
-            @click="handleNav('/uniforms', $event)"
-            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
-            :class="activeNav === 'uniforms' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold ring-1 ring-indigo-300 dark:ring-indigo-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-            <Shirt class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Rekap Seragam</span>
-          </a>
-
-          <a :href="getUrl('/audit-logs')" 
-            @click="handleNav('/audit-logs', $event)"
-            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
-            :class="activeNav === 'audit' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold ring-1 ring-indigo-300 dark:ring-indigo-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-            <History class="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Audit Trail</span>
-          </a>
-        </nav>
 
         <!-- Right Side: Theme Switcher, Notifications, User Profile & Logout -->
         <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">

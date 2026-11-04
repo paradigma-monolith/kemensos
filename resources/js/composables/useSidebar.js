@@ -49,14 +49,14 @@ export function useSidebar() {
     }
   };
 
-  // Layout offset classes for main content and top header
-  // On desktop: lg:pl-72 (288px) when expanded, lg:pl-20 (80px) when collapsed
+  // Layout offset classes for the page outer wrapper
+  // When expanded: lg:pl-64 (256px), when collapsed: lg:pl-20 (80px)
   const layoutPaddingClass = computed(() => {
-    return isCollapsed.value ? 'lg:pl-20' : 'lg:pl-72';
+    return isCollapsed.value ? 'lg:pl-20' : 'lg:pl-64';
   });
 
   const sidebarWidthClass = computed(() => {
-    return isCollapsed.value ? 'w-20' : 'w-72 max-w-[85vw]';
+    return isCollapsed.value ? 'w-20' : 'w-64';
   });
 
   return {
@@ -73,3 +73,4 @@ export function useSidebar() {
 }
 
 export default useSidebar;
+
