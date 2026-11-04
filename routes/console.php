@@ -65,3 +65,36 @@ Artisan::command('shoes:sync-storage', function () {
     $this->info("Sinkronisasi selesai! Total {$processed} berkas diproses ({$totalShoes} pasang sepatu).");
 })->purpose('Sinkronkan seluruh berkas Excel di storage ke database secara otomatis');
 
+Artisan::command('uniform:import {file : Path to the Excel file} {--output= : Path to save output JSON} {--metadata : Include metadata in output}', function ($file) {
+    $service = app(\App\Services\UniformExcelImportService::class);
+    $this->info("Memproses berkas ukuran seragam: {$file} ...");
+
+    try {
+        $includeMeta = (bool)$this->option('metadata');
+        $result = $includeMeta 
+            ? $service->parseWithMetadata($file) 
+            : $service->parse($file);
+
+        $json = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        $outputPath = $this->option('output');
+        if ($outputPath) {
+            file_put_contents($outputPath, $json);
+            $this->info("Rekapitulasi ukuran seragam berhasil disimpan ke: {$outputPath}");
+        } else {
+            $this->line($json);
+        }
+    } catch (\Throwable $e) {
+        $this->error("Gagal mengimpor data ukuran seragam: " . $e->getMessage());
+    }
+})->purpose('Import dan konversi rekapitulasi data ukuran seragam ke format JSON terstruktur');
+
+Artisan::command('seragam:import {file : Path to the Excel file} {--output= : Path to save output JSON} {--metadata : Include metadata in output}', function ($file) {
+    $this->call('uniform:import', [
+        'file' => $file,
+        '--output' => $this->option('output'),
+        '--metadata' => $this->option('metadata'),
+    ]);
+})->purpose('Alias untuk uniform:import');
+
+

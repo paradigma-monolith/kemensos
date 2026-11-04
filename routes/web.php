@@ -54,6 +54,16 @@ Route::middleware('auth')->group(function () {
         Route::patch('/recipients/{recipient}', [ShoeController::class, 'updateRecipient'])->name('recipient.update');
     });
 
+    // Seragam / Uniform Recapitulation Routes
+    Route::prefix('uniforms')->name('uniforms.')->group(function () {
+        Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
+        Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
+    });
+    Route::prefix('seragam')->name('seragam.')->group(function () {
+        Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
+        Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
+    });
+
     // Profile & Account Management
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

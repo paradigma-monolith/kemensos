@@ -29,6 +29,12 @@ Route::prefix('v1')->group(function () {
     Route::get('/exports/products/csv', [ExportController::class, 'exportCsv']);
     Route::get('/exports/products/pdf', [ExportController::class, 'exportPdf']);
 
+    // Seragam / Uniform Recapitulation API
+    Route::post('/uniforms/parse', [\App\Http\Controllers\UniformController::class, 'parse']);
+    Route::post('/uniforms/import', [\App\Http\Controllers\UniformController::class, 'import']);
+    Route::post('/seragam/parse', [\App\Http\Controllers\UniformController::class, 'parse']);
+    Route::post('/seragam/import', [\App\Http\Controllers\UniformController::class, 'import']);
+
     // Protected API Routes
     Route::middleware('auth:sanctum')->group(function () {
         // User Profile & Avatar
