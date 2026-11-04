@@ -56,10 +56,12 @@ Route::middleware('auth')->group(function () {
 
     // Seragam / Uniform Recapitulation Routes
     Route::prefix('uniforms')->name('uniforms.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\UniformController::class, 'index'])->name('index');
         Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
         Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
     });
     Route::prefix('seragam')->name('seragam.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\UniformController::class, 'index'])->name('index');
         Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
         Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
     });

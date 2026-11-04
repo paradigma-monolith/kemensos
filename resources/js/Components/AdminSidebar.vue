@@ -22,7 +22,8 @@ import {
   Pin,
   PinOff,
   ShieldCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Shirt
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -141,7 +142,7 @@ const handleLogout = () => {
 
 const navSections = computed(() => [
   {
-    title: 'Manajemen Sepatu SR',
+    title: 'Manajemen Data SR',
     items: [
       {
         name: 'Dashboard Analitik',
@@ -153,13 +154,22 @@ const navSections = computed(() => [
         badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
       },
       {
-        name: 'Rekapitulasi Ukuran',
+        name: 'Rekapitulasi Sepatu',
         path: '/shoes',
         url: getUrl('/shoes'),
         icon: FileSpreadsheet,
         active: props.currentRoute === 'shoes' || (typeof window !== 'undefined' && window.location.pathname.includes('/shoes')),
-        badge: 'Data Excel',
+        badge: 'Sepatu',
         badgeColor: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      },
+      {
+        name: 'Rekapitulasi Seragam',
+        path: '/uniforms',
+        url: getUrl('/uniforms'),
+        icon: Shirt,
+        active: props.currentRoute === 'uniforms' || (typeof window !== 'undefined' && (window.location.pathname.includes('/uniforms') || window.location.pathname.includes('/seragam'))),
+        badge: 'Seragam',
+        badgeColor: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
       },
     ],
   },
