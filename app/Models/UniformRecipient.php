@@ -48,3 +48,4 @@ class UniformRecipient extends Model
         return $this->belongsTo(School::class);
     }
 }
+

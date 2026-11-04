@@ -61,3 +61,4 @@ class UniformImportBatch extends Model
         return $this->hasMany(UniformRecipient::class, 'batch_id');
     }
 }
+

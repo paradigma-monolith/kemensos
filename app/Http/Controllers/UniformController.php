@@ -32,6 +32,9 @@ class UniformController extends Controller
         $schema = UniformExcelImportService::SCHEMA;
         $schoolId = $request->query('school_id');
         $pic = $request->query('pic');
+        $jenjang = $request->query('jenjang');
+        $kategori = $request->query('kategori');
+        $gender = $request->query('gender');
         $search = $request->query('search');
         $batchId = $request->query('batch_id');
 
@@ -59,10 +62,20 @@ class UniformController extends Controller
         $batchQuery = UniformImportBatch::with(['school:id,nama_sekolah,pic_nama', 'user:id,name'])
             ->when($pic, function ($q, $pic) {
                 $norm = School::normalizePicName($pic);
-                $q->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm);
+                $q->where(function ($sub) use ($norm) {
+                    $sub->where('pic_nama', $norm)
+                        ->orWhere('pic_nama', 'PIC ' . $norm)
+                        ->orWhereHas('school', fn($sq) => $sq->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm));
+                });
             })
             ->when($schoolId, function ($q, $sId) {
                 $q->where('school_id', $sId);
+            })
+            ->when($jenjang, function ($q, $j) {
+                $q->where(function ($sub) use ($j) {
+                    $sub->where('school_name', 'like', "%{$j}%")
+                        ->orWhere('file_name', 'like', "%{$j}%");
+                });
             })
             ->when($search, function ($q, $s) {
                 $q->where(function ($sub) use ($s) {
@@ -75,22 +88,48 @@ class UniformController extends Controller
         $batches = (clone $batchQuery)->paginate(15, ['*'], 'batch_page')->withQueryString();
 
         // High-level statistics
-        $totalPenerima = (int)UniformImportBatch::sum('total_rows');
-        $totalSiswa = (int)UniformImportBatch::sum('total_siswa');
+        $statsBatchQuery = clone $batchQuery;
+        $totalPenerima = (int)$statsBatchQuery->sum('total_rows');
+        $totalSiswa = (int)$statsBatchQuery->sum('total_siswa');
         $totalGuruTendik = (int)(
-            UniformImportBatch::sum('total_kepsek') +
-            UniformImportBatch::sum('total_guru_lama') +
-            UniformImportBatch::sum('total_guru_baru') +
-            UniformImportBatch::sum('total_tendik_lama') +
-            UniformImportBatch::sum('total_tendik_baru')
+            $statsBatchQuery->sum('total_kepsek') +
+            $statsBatchQuery->sum('total_guru_lama') +
+            $statsBatchQuery->sum('total_guru_baru') +
+            $statsBatchQuery->sum('total_tendik_lama') +
+            $statsBatchQuery->sum('total_tendik_baru')
         );
         $totalStaffKhusus = (int)(
-            UniformImportBatch::sum('total_satpam') +
-            UniformImportBatch::sum('total_kebersihan') +
-            UniformImportBatch::sum('total_dapur')
+            $statsBatchQuery->sum('total_satpam') +
+            $statsBatchQuery->sum('total_kebersihan') +
+            $statsBatchQuery->sum('total_dapur')
         );
-        $totalBatches = UniformImportBatch::count();
-        $totalSchools = School::whereHas('uniformBatches')->orWhereIn('id', UniformImportBatch::whereNotNull('school_id')->pluck('school_id'))->distinct()->count();
+        $totalBatches = $statsBatchQuery->count();
+        $totalSchools = School::whereIn('id', (clone $statsBatchQuery)->whereNotNull('school_id')->pluck('school_id'))->distinct()->count();
+
+        // Jenjang stats for quick cards (SRD, SRMP, SRMA)
+        $sheetStats = [
+            'srd' => [
+                'total' => (int)UniformImportBatch::where(function ($q) {
+                    $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%');
+                })->sum('total_rows'),
+                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%'))->where('jenis_kelamin', 'L')->count(),
+                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRD%')->orWhere('file_name', 'like', '%SRD%'))->where('jenis_kelamin', 'P')->count(),
+            ],
+            'srmp' => [
+                'total' => (int)UniformImportBatch::where(function ($q) {
+                    $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%');
+                })->sum('total_rows'),
+                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%'))->where('jenis_kelamin', 'L')->count(),
+                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMP%')->orWhere('file_name', 'like', '%SRMP%'))->where('jenis_kelamin', 'P')->count(),
+            ],
+            'srma' => [
+                'total' => (int)UniformImportBatch::where(function ($q) {
+                    $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%');
+                })->sum('total_rows'),
+                'pria' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%'))->where('jenis_kelamin', 'L')->count(),
+                'wanita' => UniformRecipient::whereHas('batch', fn($q) => $q->where('school_name', 'like', '%SRMA%')->orWhere('file_name', 'like', '%SRMA%'))->where('jenis_kelamin', 'P')->count(),
+            ],
+        ];
 
         // Schools that have uniform batches
         $schools = School::withCount(['uniformBatches', 'uniformRecipients'])
@@ -181,10 +220,14 @@ class UniformController extends Controller
                 'total_staff_khusus' => $totalStaffKhusus,
                 'total_schools' => $totalSchools,
                 'total_batches' => $totalBatches,
+                'sheet_stats' => $sheetStats,
             ],
             'filters' => [
                 'school_id' => $schoolId ? (int)$schoolId : null,
                 'pic' => $pic,
+                'jenjang' => $jenjang,
+                'kategori' => $kategori,
+                'gender' => $gender,
                 'search' => $search,
                 'tab' => $tab,
             ],
