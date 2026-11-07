@@ -11,7 +11,9 @@ import {
   Menu,
   X,
   Radio,
-  CheckCheck
+  CheckCheck,
+  Users,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 import AdminSidebar from './AdminSidebar.vue';
 import ThemeSwitcher from './ThemeSwitcher.vue';
@@ -45,6 +47,8 @@ const activeNav = computed(() => {
   const p = window.location.pathname;
   if (p.includes('/audit-logs')) return 'audit';
   if (p.includes('/profile')) return 'profile';
+  if (p.includes('/guru-tendik-comparison')) return 'guru-tendik-comparison';
+  if (p.includes('/guru-tendik')) return 'guru-tendik';
   if (p.includes('/shoes')) return 'shoes';
   if (p.includes('/dashboard') || p === '/' || p.endsWith('/public') || p.endsWith('/public/')) return 'dashboard';
   return '';
@@ -294,6 +298,22 @@ const handleLogout = () => {
             :class="activeNav === 'shoes' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold ring-1 ring-emerald-300 dark:ring-emerald-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
             <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Rekapitulasi Sepatu</span>
+          </a>
+
+          <a :href="getUrl('/guru-tendik')" 
+            @click="handleNav('/guru-tendik', $event)"
+            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
+            :class="activeNav === 'guru-tendik' ? 'bg-cyan-50 dark:bg-cyan-950/50 text-cyan-700 dark:text-cyan-300 font-semibold ring-1 ring-cyan-300 dark:ring-cyan-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+            <Users class="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <span>Data Guru &amp; Tendik</span>
+          </a>
+
+          <a :href="getUrl('/guru-tendik-comparison')" 
+            @click="handleNav('/guru-tendik-comparison', $event)"
+            class="px-3 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer font-medium"
+            :class="activeNav === 'guru-tendik-comparison' ? 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 font-semibold ring-1 ring-violet-300 dark:ring-violet-700/60 shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+            <ArrowLeftRight class="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            <span>Perbandingan Guru &amp; Tendik</span>
           </a>
 
           <a :href="getUrl('/audit-logs')" 

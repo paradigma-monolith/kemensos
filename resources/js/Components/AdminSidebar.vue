@@ -22,7 +22,9 @@ import {
   Pin,
   PinOff,
   ShieldCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Users,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -160,6 +162,24 @@ const navSections = computed(() => [
         active: props.currentRoute === 'shoes' || (typeof window !== 'undefined' && window.location.pathname.includes('/shoes')),
         badge: 'Data Excel',
         badgeColor: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      },
+      {
+        name: 'Data Guru & Tendik',
+        path: '/guru-tendik',
+        url: getUrl('/guru-tendik'),
+        icon: Users,
+        active: props.currentRoute === 'guru-tendik' || (typeof window !== 'undefined' && (window.location.pathname === '/guru-tendik' || window.location.pathname.endsWith('/guru-tendik'))),
+        badge: 'Revisi',
+        badgeColor: 'bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800',
+      },
+      {
+        name: 'Perbandingan Guru & Tendik',
+        path: '/guru-tendik-comparison',
+        url: getUrl('/guru-tendik-comparison'),
+        icon: ArrowLeftRight,
+        active: props.currentRoute === 'guru-tendik-comparison' || (typeof window !== 'undefined' && window.location.pathname.includes('/guru-tendik-comparison')),
+        badge: 'Komparasi',
+        badgeColor: 'bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
       },
     ],
   },

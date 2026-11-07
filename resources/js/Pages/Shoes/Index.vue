@@ -25,7 +25,8 @@ import {
   RefreshCw,
   Info,
   Edit2,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -485,6 +486,17 @@ const excelExportUrl = computed(() => {
             <UploadCloud class="w-4 h-4" />
             Import Excel Baru
           </button>
+
+          <!-- Quick Navigation to Guru & Tendik Comparison -->
+          <a
+            :href="getUrl('/guru-tendik-comparison')"
+            @click.prevent="router.visit(getUrl('/guru-tendik-comparison'))"
+            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/60 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/60 shadow-sm active:scale-95 transition-all cursor-pointer"
+            title="Bandingkan Data Sepatu (Guru & Tendik) dengan Database Guru & Tendik"
+          >
+            <ArrowLeftRight class="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            Komparasi Guru &amp; Tendik
+          </a>
 
           <!-- Export Excel Group with Deduplicate Option -->
           <div class="inline-flex flex-wrap items-center gap-2 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
