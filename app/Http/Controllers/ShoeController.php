@@ -378,7 +378,11 @@ class ShoeController extends Controller
         @set_time_limit(300);
 
         $schoolId = $request->query('school_id');
-        $spreadsheet = $this->exportService->generateRecapExcel($schoolId ? (int)$schoolId : null);
+        $deduplicate = $request->boolean('deduplicate') || $request->boolean('remove_duplicates');
+        $spreadsheet = $this->exportService->generateRecapExcel(
+            $schoolId ? (int)$schoolId : null,
+            $deduplicate
+        );
 
         $schoolPrefix = 'Semua_Sekolah';
         if ($schoolId) {

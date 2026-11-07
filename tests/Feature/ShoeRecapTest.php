@@ -649,6 +649,81 @@ class ShoeRecapTest extends TestCase
         $this->assertArrayHasKey('jenjang_distribution', $data);
         $this->assertCount(4, $data['jenjang_distribution']);
     }
+
+    public function test_excel_export_can_remove_duplicates_by_name_and_school(): void
+    {
+        $user = User::factory()->create();
+        $schoolA = School::create(['nama_sekolah' => 'SRMP 1 Bandung']);
+        $schoolB = School::create(['nama_sekolah' => 'SRMP 2 Bogor']);
+
+        $batchA = ShoeImportBatch::create([
+            'school_id' => $schoolA->id,
+            'file_name' => 'bandung.xlsx',
+            'imported_by' => $user->id,
+        ]);
+        $batchB = ShoeImportBatch::create([
+            'school_id' => $schoolB->id,
+            'file_name' => 'bogor.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        // Two duplicate entries in School A (same name, different casing/whitespace)
+        ShoeRecipient::create([
+            'school_id' => $schoolA->id,
+            'batch_id' => $batchA->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Budi Santoso',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 40,
+            'sheet_source' => 'SEPATU SISWA SRMP',
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $schoolA->id,
+            'batch_id' => $batchA->id,
+            'nomor_urut' => 2,
+            'nama_lengkap' => '  BUDI   SANTOSO ',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 40,
+            'sheet_source' => 'SEPATU SISWA SRMP',
+        ]);
+
+        // Same name in School B (should NOT be removed because school is different)
+        ShoeRecipient::create([
+            'school_id' => $schoolB->id,
+            'batch_id' => $batchB->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Budi Santoso',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 41,
+            'sheet_source' => 'SEPATU SISWA SRMP',
+        ]);
+
+        $exportService = app(\App\Services\ShoeExportService::class);
+
+        // 1. Standard export (without deduplication): 3 recipients total (rows 2, 3, 4 in Daftar Penerima)
+        $spreadsheetStandard = $exportService->generateRecapExcel(null, false);
+        $masterSheetStandard = $spreadsheetStandard->getSheetByName('Daftar Penerima');
+        $this->assertEquals(4, $masterSheetStandard->getHighestDataRow());
+
+        // 2. Deduplicated export: 2 recipients total (rows 2, 3 in Daftar Penerima)
+        $spreadsheetDedup = $exportService->generateRecapExcel(null, true);
+        $masterSheetDedup = $spreadsheetDedup->getSheetByName('Daftar Penerima');
+        $this->assertEquals(3, $masterSheetDedup->getHighestDataRow());
+        $this->assertEquals('SRMP 1 Bandung', $masterSheetDedup->getCell('B2')->getValue());
+        $this->assertEquals('Budi Santoso', $masterSheetDedup->getCell('C2')->getValue());
+        $this->assertEquals('SRMP 2 Bogor', $masterSheetDedup->getCell('B3')->getValue());
+        $this->assertEquals('Budi Santoso', $masterSheetDedup->getCell('C3')->getValue());
+
+        // 3. Verify HTTP endpoint with ?deduplicate=1 returns 200
+        $response = $this->actingAs($user)->get('/shoes/export/excel?deduplicate=1');
+        $response->assertStatus(200);
+    }
 }
 
 

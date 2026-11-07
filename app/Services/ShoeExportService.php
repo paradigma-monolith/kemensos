@@ -22,9 +22,10 @@ class ShoeExportService
      * - Memory-safe styling avoiding Coordinate reference explosion on massive rows.
      *
      * @param int|null $schoolId Filter by specific school or null for all schools
+     * @param bool $deduplicate Remove duplicate recipients having the same name and school
      * @return Spreadsheet
      */
-    public function generateRecapExcel(?int $schoolId = null): Spreadsheet
+    public function generateRecapExcel(?int $schoolId = null, bool $deduplicate = false): Spreadsheet
     {
         @ini_set('memory_limit', '1024M');
         @ini_set('max_execution_time', '300');
@@ -72,15 +73,6 @@ class ShoeExportService
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '94A3B8']]],
         ];
 
-        // Fetch distinct available sizes
-        $availableSizes = ShoeRecipient::when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->distinct()
-            ->orderBy('ukuran_sepatu')
-            ->pluck('ukuran_sepatu')
-            ->toArray();
-        $sizes = array_unique(array_merge(range(26, 46), array_map('intval', $availableSizes)));
-        sort($sizes);
-
         // Fetch schools and create fast ID lookup map
         $schoolsQuery = School::query();
         if ($schoolId) {
@@ -100,6 +92,28 @@ class ShoeExportService
             $allRecipientsQuery->where('school_id', $schoolId);
         }
         $allRecipients = $allRecipientsQuery->get();
+
+        // Remove duplicate recipients with identical name and school when requested
+        if ($deduplicate) {
+            $seenRecipientKeys = [];
+            $allRecipients = $allRecipients->filter(function ($r) use ($schoolsMap, &$seenRecipientKeys) {
+                $schoolName = $schoolsMap[$r->school_id]->nama_sekolah ?? (string)$r->school_id;
+                $normSchool = mb_strtolower(trim((string)preg_replace('/\s+/u', ' ', $schoolName)));
+                $normName = mb_strtolower(trim((string)preg_replace('/\s+/u', ' ', (string)($r->nama_lengkap ?? ''))));
+                $key = $normSchool . '|' . $normName;
+
+                if (isset($seenRecipientKeys[$key])) {
+                    return false;
+                }
+                $seenRecipientKeys[$key] = true;
+                return true;
+            })->values();
+        }
+
+        // Fetch distinct available sizes from the active recipient dataset
+        $availableSizes = $allRecipients->pluck('ukuran_sepatu')->unique()->values()->toArray();
+        $sizes = array_unique(array_merge(range(26, 46), array_map('intval', $availableSizes)));
+        sort($sizes);
 
         // Single-pass O(N) aggregation: pre-computes size, school, and cross-tab stats
         $statsBySize = [];
