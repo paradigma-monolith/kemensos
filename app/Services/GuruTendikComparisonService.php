@@ -2,9 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\GuruTendikRecord;
-use App\Models\School;
-use App\Models\ShoeRecipient;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -47,7 +45,7 @@ class GuruTendikComparisonService
             $s = preg_replace($pattern, $replacement, $s);
         }
 
-        // Remove administrative administrative noise words that may appear in one source but not another
+        // Remove administrative noise words that may appear in one source but not another
         $s = preg_replace('/\b(KABUPATEN|KAB\.?|KOTA|PROVINSI|PROV\.?)\b/i', ' ', $s);
 
         // Replace punctuation with spaces
@@ -57,9 +55,7 @@ class GuruTendikComparisonService
         $s = preg_replace('/\b0+(\d+)\b/', '$1', $s);
 
         // Collapse multiple spaces
-        $s = strtolower(trim(preg_replace('/\s+/', ' ', $s)));
-
-        return $s;
+        return strtolower(trim(preg_replace('/\s+/', ' ', $s)));
     }
 
     /**
@@ -81,10 +77,9 @@ class GuruTendikComparisonService
 
         // Remove common prefix titles
         $n = preg_replace('/^\s*(prof\.?|dr\.?|drs\.?|dra\.?|ir\.?|h\.?|hj\.?|kh\.?|ust\.?|ustadz|ustadzah|rd\.?|r\.?|ny\.?|tn\.?|ns\.?)\s+/i', '', $n);
-        // Run twice in case of stacked prefixes like "Dr. H."
         $n = preg_replace('/^\s*(prof\.?|dr\.?|drs\.?|dra\.?|ir\.?|h\.?|hj\.?|kh\.?|ust\.?|ustadz|ustadzah|rd\.?|r\.?|ny\.?|tn\.?|ns\.?)\s+/i', '', $n);
 
-        // Remove trailing degree tokens that might be written without a comma (e.g. "S.Pd", "M.Pd", "Gr", "S.Kom")
+        // Remove trailing degree tokens that might be written without a comma
         $n = preg_replace('/\b(s\.?\s*pd\.?\s*(i|sd|gr)?|m\.?\s*pd\.?|s\.?\s*kom\.?|s\.?\s*ag\.?|s\.?\s*si\.?|s\.?\s*hum\.?|s\.?\s*sos\.?|s\.?\s*psi\.?|s\.?\s*e\.?|s\.?\s*h\.?|s\.?\s*t\.?|s\.?\s*kep\.?|ners|a\.?\s*md\.?|gr\.?|m\.?\s*si\.?|m\.?\s*m\.?|m\.?\s*ag\.?|s\.?\s*or\.?|s\.?\s*sn\.?|s\.?\s*ip\.?|s\.?\s*ap\.?|s\.?\s*ak\.?)\s*$/i', '', $n);
 
         // Lowercase and strip non-letters/numbers
@@ -173,7 +168,6 @@ class GuruTendikComparisonService
 
     /**
      * Check if two normalized names are a fuzzy / prefix / token match.
-     * E.g. "sopyan" <-> "sopyan iskandar" or slight typo "chendikia jingga utara" <-> "chendykia jingga utara".
      */
     protected function isSimilarName(string $nameA, string $nameB): bool
     {
@@ -187,13 +181,11 @@ class GuruTendikComparisonService
         $tokensA = explode(' ', $nameA);
         $tokensB = explode(' ', $nameB);
 
-        // Case 1: One name is a prefix token subset of the other (e.g. "sopyan" and "sopyan iskandar")
         $minLen = min(strlen($nameA), strlen($nameB));
         if ($minLen >= 5) {
             if (str_starts_with($nameB, $nameA . ' ') || str_starts_with($nameA, $nameB . ' ')) {
                 return true;
             }
-            // All tokens of shorter name exist in longer name in order
             $shorter = count($tokensA) <= count($tokensB) ? $tokensA : $tokensB;
             $longer = count($tokensA) <= count($tokensB) ? $tokensB : $tokensA;
             if (count($shorter) >= 1 && strlen($shorter[0]) >= 5) {
@@ -210,7 +202,6 @@ class GuruTendikComparisonService
             }
         }
 
-        // Case 2: High character similarity for multi-word names (typo tolerance)
         if ($minLen >= 8 && abs(strlen($nameA) - strlen($nameB)) <= 3) {
             $lev = levenshtein($nameA, $nameB);
             if ($lev > 0 && $lev <= 2) {
@@ -222,20 +213,32 @@ class GuruTendikComparisonService
     }
 
     /**
-     * Build full comparison dataset between GuruTendikRecord and ShoeRecipient (Guru & Tendik only).
+     * Build comparison dataset between GuruTendikRecord and ShoeRecipient (Guru & Tendik only).
+     * When $page and $perPage are provided, only the requested slice of individual rows is materialized
+     * into full display arrays so peak memory stays under 20MB even with 15,000+ rows.
      */
-    public function compare(array $filters = []): array
+    public function compare(array $filters = [], ?int $page = null, int $perPage = 50): array
     {
-        // 1. Load all Master Guru & Tendik records
-        $masterRecordsRaw = GuruTendikRecord::orderBy('sekolah')
-            ->orderBy('nama_lengkap')
-            ->get();
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
 
-        // Deduplicate master records by (school_key + normalized_name) in case same file was imported multiple times
+        // 1. Stream Master Guru & Tendik records using lightweight DB::table cursor
+        $masterCursor = DB::table('guru_tendik_records')
+            ->select(['id', 'nama_lengkap', 'jenis_kelamin', 'status', 'jabatan', 'sekolah'])
+            ->orderBy('sekolah')
+            ->orderBy('nama_lengkap')
+            ->cursor();
+
         $masterItems = [];
         $masterSeen = [];
-        foreach ($masterRecordsRaw as $rec) {
-            $schoolKey = self::normalizeSchoolKey($rec->sekolah);
+        $schoolKeyCache = [];
+
+        foreach ($masterCursor as $rec) {
+            $rawSekolah = trim((string) $rec->sekolah);
+            if (!isset($schoolKeyCache[$rawSekolah])) {
+                $schoolKeyCache[$rawSekolah] = self::normalizeSchoolKey($rawSekolah);
+            }
+            $schoolKey = $schoolKeyCache[$rawSekolah];
             $normName = self::normalizePersonName($rec->nama_lengkap);
             if ($normName === '') {
                 continue;
@@ -246,50 +249,62 @@ class GuruTendikComparisonService
             }
             $masterSeen[$dedupKey] = true;
 
-            $jkCode = self::normalizeGenderCode($rec->jenis_kelamin);
-            $kategori = self::classifyKategori($rec->jabatan);
-
+            // Compact indexed array: [0:id, 1:nama, 2:norm, 3:jk, 4:status, 5:jabatan, 6:kat, 7:sekolah, 8:skey, 9:matched]
             $masterItems[] = [
-                'id' => $rec->id,
-                'no' => $rec->no,
-                'nama_lengkap' => trim($rec->nama_lengkap),
-                'norm_name' => $normName,
-                'jenis_kelamin' => $rec->jenis_kelamin,
-                'jk_code' => $jkCode,
-                'status' => trim((string) $rec->status),
-                'jabatan' => trim((string) $rec->jabatan),
-                'kategori' => $kategori,
-                'sekolah' => trim((string) $rec->sekolah),
-                'school_key' => $schoolKey,
-                'sheet_name' => $rec->sheet_name,
-                'matched' => false,
+                (int) $rec->id,
+                trim((string) $rec->nama_lengkap),
+                $normName,
+                self::normalizeGenderCode($rec->jenis_kelamin),
+                trim((string) $rec->status),
+                trim((string) $rec->jabatan),
+                self::classifyKategori($rec->jabatan),
+                $rawSekolah,
+                $schoolKey,
+                false,
             ];
         }
+        unset($masterSeen);
 
-        // 2. Load all Shoe Recap records for Guru & Tendik ONLY (exclude Siswa)
-        $shoeRecipientsRaw = ShoeRecipient::with('school')
+        // 2. Stream Shoe Recap records for Guru & Tendik ONLY
+        $shoeCursor = DB::table('shoe_recipients')
+            ->leftJoin('schools', 'shoe_recipients.school_id', '=', 'schools.id')
+            ->select([
+                'shoe_recipients.id',
+                'shoe_recipients.nama_lengkap',
+                'shoe_recipients.jenis_kelamin',
+                'shoe_recipients.jabatan',
+                'shoe_recipients.kategori',
+                'shoe_recipients.ukuran_sepatu',
+                'shoe_recipients.panjang_kaki',
+                'shoe_recipients.sheet_source',
+                'schools.nama_sekolah',
+                'schools.pic_nama',
+                'schools.kota',
+            ])
             ->where(function ($q) {
-                $q->whereIn('kategori', ['guru', 'tendik'])
-                  ->orWhere('sheet_source', 'like', '%GURU%')
-                  ->orWhere('sheet_source', 'like', '%TENDIK%');
+                $q->whereIn('shoe_recipients.kategori', ['guru', 'tendik'])
+                  ->orWhere('shoe_recipients.sheet_source', 'like', '%GURU%')
+                  ->orWhere('shoe_recipients.sheet_source', 'like', '%TENDIK%');
             })
             ->where(function ($q) {
-                $q->whereNull('sheet_source')
+                $q->whereNull('shoe_recipients.sheet_source')
                   ->orWhere(function ($sq) {
-                      $sq->where('sheet_source', 'not like', '%SRD%')
-                         ->where('sheet_source', 'not like', '%SRMP%')
-                         ->where('sheet_source', 'not like', '%SRMA%');
+                      $sq->where('shoe_recipients.sheet_source', 'not like', '%SRD%')
+                         ->where('shoe_recipients.sheet_source', 'not like', '%SRMP%')
+                         ->where('shoe_recipients.sheet_source', 'not like', '%SRMA%');
                   });
             })
-            ->orderBy('id', 'desc')
-            ->get();
+            ->orderBy('shoe_recipients.id', 'desc')
+            ->cursor();
 
-        // Deduplicate shoe recipients per school + normalized name (keep latest record)
         $shoeItems = [];
         $shoeSeen = [];
-        foreach ($shoeRecipientsRaw as $rec) {
-            $schoolName = $rec->school?->nama_sekolah ?? 'Sekolah Tidak Diketahui';
-            $schoolKey = self::normalizeSchoolKey($schoolName);
+        foreach ($shoeCursor as $rec) {
+            $schoolName = trim((string) ($rec->nama_sekolah ?? 'Sekolah Tidak Diketahui'));
+            if (!isset($schoolKeyCache[$schoolName])) {
+                $schoolKeyCache[$schoolName] = self::normalizeSchoolKey($schoolName);
+            }
+            $schoolKey = $schoolKeyCache[$schoolName];
             $normName = self::normalizePersonName($rec->nama_lengkap);
             if ($normName === '') {
                 continue;
@@ -300,134 +315,116 @@ class GuruTendikComparisonService
             }
             $shoeSeen[$dedupKey] = true;
 
-            $jkCode = self::normalizeGenderCode($rec->jenis_kelamin);
-            $kategori = self::classifyKategori($rec->jabatan, $rec->kategori);
+            $ukuran = $rec->ukuran_sepatu !== null ? (int) $rec->ukuran_sepatu : null;
 
+            // Compact indexed array: [0:id, 1:nama, 2:norm, 3:jk, 4:jabatan, 5:kat, 6:ukuran, 7:panjang, 8:anomaly, 9:sekolah, 10:pic, 11:kota, 12:skey, 13:matched]
             $shoeItems[] = [
-                'id' => $rec->id,
-                'school_id' => $rec->school_id,
-                'nama_lengkap' => trim($rec->nama_lengkap),
-                'norm_name' => $normName,
-                'jenis_kelamin' => self::formatGenderLabel($jkCode),
-                'jk_code' => $jkCode,
-                'jabatan' => trim((string) $rec->jabatan),
-                'kategori' => $kategori,
-                'ukuran_sepatu' => $rec->ukuran_sepatu,
-                'panjang_kaki' => $rec->panjang_kaki,
-                'is_anomaly' => $rec->is_anomaly,
-                'anomaly_reason' => $rec->anomaly_reason,
-                'sekolah' => trim($schoolName),
-                'pic_nama' => $rec->school?->pic_nama,
-                'kota' => $rec->school?->kota,
-                'school_key' => $schoolKey,
-                'sheet_source' => $rec->sheet_source,
-                'matched' => false,
+                (int) $rec->id,
+                trim((string) $rec->nama_lengkap),
+                $normName,
+                self::normalizeGenderCode($rec->jenis_kelamin),
+                trim((string) $rec->jabatan),
+                self::classifyKategori($rec->jabatan, $rec->kategori),
+                $ukuran,
+                $rec->panjang_kaki !== null ? (float) $rec->panjang_kaki : null,
+                ($ukuran === null || $ukuran > 46 || $ukuran < 26),
+                $schoolName,
+                $rec->pic_nama,
+                $rec->kota,
+                $schoolKey,
+                false,
             ];
         }
+        unset($shoeSeen);
 
-        // Index shoe items by school_key for fast lookup
+        // Index shoe items by school_key for O(1) school lookup
         $shoeBySchool = [];
         foreach ($shoeItems as $idx => $sItem) {
-            $shoeBySchool[$sItem['school_key']][] = $idx;
+            $shoeBySchool[$sItem[12]][] = $idx;
         }
 
         // 3. Perform Multi-Tier Matching
-        $matches = []; // masterIdx => ['shoe_idx' => int, 'match_type' => string]
+        $matches = []; // masterIdx => [0:shoeIdx, 1:matchType]
 
         // Tier 1: Exact normalized name match in the same school
         foreach ($masterItems as $mIdx => $mItem) {
-            $sKey = $mItem['school_key'];
+            $sKey = $mItem[8];
             if (empty($shoeBySchool[$sKey])) {
                 continue;
             }
             foreach ($shoeBySchool[$sKey] as $sIdx) {
-                if ($shoeItems[$sIdx]['matched']) {
+                if ($shoeItems[$sIdx][13]) {
                     continue;
                 }
-                if ($mItem['norm_name'] === $shoeItems[$sIdx]['norm_name']) {
-                    $masterItems[$mIdx]['matched'] = true;
-                    $shoeItems[$sIdx]['matched'] = true;
-                    $matches[$mIdx] = [
-                        'shoe_idx' => $sIdx,
-                        'match_type' => 'exact',
-                    ];
+                if ($mItem[2] === $shoeItems[$sIdx][2]) {
+                    $masterItems[$mIdx][9] = true;
+                    $shoeItems[$sIdx][13] = true;
+                    $matches[$mIdx] = [$sIdx, 'exact'];
                     break;
                 }
             }
         }
 
-        // Tier 2: Similar/Prefix name match in the same school (prefer same gender)
+        // Tier 2: Similar/Prefix name match in the same school (same gender)
         foreach ($masterItems as $mIdx => $mItem) {
-            if ($masterItems[$mIdx]['matched']) {
+            if ($masterItems[$mIdx][9]) {
                 continue;
             }
-            $sKey = $mItem['school_key'];
+            $sKey = $mItem[8];
             if (empty($shoeBySchool[$sKey])) {
                 continue;
             }
             foreach ($shoeBySchool[$sKey] as $sIdx) {
-                if ($shoeItems[$sIdx]['matched']) {
+                if ($shoeItems[$sIdx][13]) {
                     continue;
                 }
-                // Check gender compatibility if both have gender
-                if (
-                    $mItem['jk_code'] !== '' &&
-                    $shoeItems[$sIdx]['jk_code'] !== '' &&
-                    $mItem['jk_code'] !== $shoeItems[$sIdx]['jk_code']
-                ) {
+                if ($mItem[3] !== '' && $shoeItems[$sIdx][3] !== '' && $mItem[3] !== $shoeItems[$sIdx][3]) {
                     continue;
                 }
-                if ($this->isSimilarName($mItem['norm_name'], $shoeItems[$sIdx]['norm_name'])) {
-                    $masterItems[$mIdx]['matched'] = true;
-                    $shoeItems[$sIdx]['matched'] = true;
-                    $matches[$mIdx] = [
-                        'shoe_idx' => $sIdx,
-                        'match_type' => 'similar',
-                    ];
+                if ($this->isSimilarName($mItem[2], $shoeItems[$sIdx][2])) {
+                    $masterItems[$mIdx][9] = true;
+                    $shoeItems[$sIdx][13] = true;
+                    $matches[$mIdx] = [$sIdx, 'similar'];
                     break;
                 }
             }
         }
+        unset($shoeBySchool);
 
         // Tier 3: Cross-school exact name match (for multi-word names >= 10 chars)
         $unmatchedShoeByNormName = [];
         foreach ($shoeItems as $sIdx => $sItem) {
-            if (!$sItem['matched'] && strlen($sItem['norm_name']) >= 10 && str_contains($sItem['norm_name'], ' ')) {
-                $unmatchedShoeByNormName[$sItem['norm_name']][] = $sIdx;
+            if (!$sItem[13] && strlen($sItem[2]) >= 10 && str_contains($sItem[2], ' ')) {
+                $unmatchedShoeByNormName[$sItem[2]][] = $sIdx;
             }
         }
 
         foreach ($masterItems as $mIdx => $mItem) {
-            if ($masterItems[$mIdx]['matched']) {
+            if ($masterItems[$mIdx][9]) {
                 continue;
             }
-            $nName = $mItem['norm_name'];
+            $nName = $mItem[2];
             if (!empty($unmatchedShoeByNormName[$nName])) {
                 foreach ($unmatchedShoeByNormName[$nName] as $sIdx) {
-                    if (!$shoeItems[$sIdx]['matched']) {
-                        $masterItems[$mIdx]['matched'] = true;
-                        $shoeItems[$sIdx]['matched'] = true;
-                        $matches[$mIdx] = [
-                            'shoe_idx' => $sIdx,
-                            'match_type' => 'cross_school',
-                        ];
+                    if (!$shoeItems[$sIdx][13]) {
+                        $masterItems[$mIdx][9] = true;
+                        $shoeItems[$sIdx][13] = true;
+                        $matches[$mIdx] = [$sIdx, 'cross_school'];
                         break;
                     }
                 }
             }
         }
+        unset($unmatchedShoeByNormName);
 
-        // 4. Construct Unified Comparison Rows & Aggregate Analytics
-        $allRows = [];
+        // 4. Build School Map
         $schoolMap = [];
-
-        // Initialize schools from Master
-        foreach ($masterItems as $mItem) {
-            $sKey = $mItem['school_key'] ?: 'tanpa-sekolah';
+        foreach ($masterItems as $mIdx => $mItem) {
+            $sKey = $mItem[8] ?: 'tanpa-sekolah';
             if (!isset($schoolMap[$sKey])) {
                 $schoolMap[$sKey] = [
                     'school_key' => $sKey,
-                    'nama_sekolah' => $mItem['sekolah'],
+                    'nama_sekolah' => $mItem[7],
                     'nama_sekolah_sepatu' => null,
                     'pic_nama' => null,
                     'kota' => null,
@@ -448,28 +445,33 @@ class GuruTendikComparisonService
                 ];
             }
             $schoolMap[$sKey]['master_total']++;
-            if ($mItem['jk_code'] === 'L') {
+            if ($mItem[3] === 'L') {
                 $schoolMap[$sKey]['master_l']++;
-            } elseif ($mItem['jk_code'] === 'P') {
+            } elseif ($mItem[3] === 'P') {
                 $schoolMap[$sKey]['master_p']++;
             }
-            if ($mItem['kategori'] === 'Guru') {
+            if ($mItem[6] === 'Guru') {
                 $schoolMap[$sKey]['master_guru']++;
             } else {
                 $schoolMap[$sKey]['master_tendik']++;
             }
+
+            if (isset($matches[$mIdx])) {
+                $schoolMap[$sKey]['sudah_ada']++;
+            } else {
+                $schoolMap[$sKey]['belum_ada']++;
+            }
         }
 
-        // Also register schools from Shoe Recap
         foreach ($shoeItems as $sItem) {
-            $sKey = $sItem['school_key'] ?: 'tanpa-sekolah';
+            $sKey = $sItem[12] ?: 'tanpa-sekolah';
             if (!isset($schoolMap[$sKey])) {
                 $schoolMap[$sKey] = [
                     'school_key' => $sKey,
-                    'nama_sekolah' => $sItem['sekolah'],
-                    'nama_sekolah_sepatu' => $sItem['sekolah'],
-                    'pic_nama' => $sItem['pic_nama'],
-                    'kota' => $sItem['kota'],
+                    'nama_sekolah' => $sItem[9],
+                    'nama_sekolah_sepatu' => $sItem[9],
+                    'pic_nama' => $sItem[10],
+                    'kota' => $sItem[11],
                     'master_total' => 0,
                     'master_l' => 0,
                     'master_p' => 0,
@@ -486,285 +488,39 @@ class GuruTendikComparisonService
                     'diff_attr' => 0,
                 ];
             } else {
-                $schoolMap[$sKey]['nama_sekolah_sepatu'] = $sItem['sekolah'];
-                if (!empty($sItem['pic_nama'])) {
-                    $schoolMap[$sKey]['pic_nama'] = $sItem['pic_nama'];
+                $schoolMap[$sKey]['nama_sekolah_sepatu'] = $sItem[9];
+                if (!empty($sItem[10])) {
+                    $schoolMap[$sKey]['pic_nama'] = $sItem[10];
                 }
-                if (!empty($sItem['kota'])) {
-                    $schoolMap[$sKey]['kota'] = $sItem['kota'];
+                if (!empty($sItem[11])) {
+                    $schoolMap[$sKey]['kota'] = $sItem[11];
                 }
             }
             $schoolMap[$sKey]['shoe_total']++;
-            if ($sItem['jk_code'] === 'L') {
+            if ($sItem[3] === 'L') {
                 $schoolMap[$sKey]['shoe_l']++;
-            } elseif ($sItem['jk_code'] === 'P') {
+            } elseif ($sItem[3] === 'P') {
                 $schoolMap[$sKey]['shoe_p']++;
             }
-            if ($sItem['kategori'] === 'Guru') {
+            if ($sItem[5] === 'Guru') {
                 $schoolMap[$sKey]['shoe_guru']++;
             } else {
                 $schoolMap[$sKey]['shoe_tendik']++;
             }
-        }
-
-        // Counters for global summary
-        $exactMatchCount = 0;
-        $similarMatchCount = 0;
-        $crossSchoolMatchCount = 0;
-        $diffAttrCount = 0;
-
-        $genderStats = [
-            'L' => ['label' => 'Laki-laki', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
-            'P' => ['label' => 'Perempuan', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
-        ];
-        $kategoriStats = [
-            'Guru' => ['label' => 'Guru / Pengajar', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
-            'Tendik' => ['label' => 'Tenaga Kependidikan (Tendik)', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
-        ];
-        $statusKepegawaianMap = [];
-        $shoeSizeMap = [];
-
-        // Process Master rows (Matched + Missing Shoe)
-        foreach ($masterItems as $mIdx => $mItem) {
-            $sKey = $mItem['school_key'] ?: 'tanpa-sekolah';
-            $jk = $mItem['jk_code'] ?: 'L';
-            $kat = $mItem['kategori'];
-            $statusPeg = $mItem['status'] !== '' ? strtoupper($mItem['status']) : 'LAINNYA';
-
-            if (isset($genderStats[$jk])) {
-                $genderStats[$jk]['master']++;
-            }
-            if (isset($kategoriStats[$kat])) {
-                $kategoriStats[$kat]['master']++;
-            }
-            if (!isset($statusKepegawaianMap[$statusPeg])) {
-                $statusKepegawaianMap[$statusPeg] = [
-                    'status' => $statusPeg,
-                    'master' => 0,
-                    'sudah_ada' => 0,
-                    'belum_ada' => 0,
-                ];
-            }
-            $statusKepegawaianMap[$statusPeg]['master']++;
-
-            if (isset($matches[$mIdx])) {
-                $sIdx = $matches[$mIdx]['shoe_idx'];
-                $mType = $matches[$mIdx]['match_type'];
-                $sItem = $shoeItems[$sIdx];
-
-                if ($mType === 'exact') {
-                    $exactMatchCount++;
-                } elseif ($mType === 'similar') {
-                    $similarMatchCount++;
-                } else {
-                    $crossSchoolMatchCount++;
-                }
-
-                $schoolMap[$sKey]['sudah_ada']++;
-                if (isset($genderStats[$jk])) {
-                    $genderStats[$jk]['sudah_ada']++;
-                }
-                if (isset($kategoriStats[$kat])) {
-                    $kategoriStats[$kat]['sudah_ada']++;
-                }
-                $statusKepegawaianMap[$statusPeg]['sudah_ada']++;
-
-                // Check attribute differences
-                $diffs = [];
-                if ($mItem['jk_code'] !== '' && $sItem['jk_code'] !== '' && $mItem['jk_code'] !== $sItem['jk_code']) {
-                    $diffs[] = "Jenis Kelamin ({$mItem['jk_code']} vs {$sItem['jk_code']})";
-                }
-                if ($mItem['kategori'] !== $sItem['kategori']) {
-                    $diffs[] = "Kategori ({$mItem['kategori']} vs {$sItem['kategori']})";
-                }
-                if ($mType === 'cross_school') {
-                    $diffs[] = "Sekolah ({$mItem['sekolah']} vs {$sItem['sekolah']})";
-                }
-
-                $hasDiff = !empty($diffs);
-                if ($hasDiff) {
-                    $diffAttrCount++;
-                    $schoolMap[$sKey]['diff_attr']++;
-                }
-
-                $matchNote = match ($mType) {
-                    'exact' => 'Cocok Persis',
-                    'similar' => "Kemiripan Nama (Sepatu: {$sItem['nama_lengkap']})",
-                    'cross_school' => "Cocok Lintas Sekolah ({$sItem['sekolah']})",
-                    default => 'Cocok',
-                };
-                if ($hasDiff) {
-                    $matchNote .= ' • Beda ' . implode(', ', $diffs);
-                }
-
-                // Track shoe size distribution
-                $size = $sItem['ukuran_sepatu'];
-                if ($size) {
-                    if (!isset($shoeSizeMap[$size])) {
-                        $shoeSizeMap[$size] = ['ukuran' => $size, 'total' => 0, 'laki_laki' => 0, 'perempuan' => 0, 'sudah_match' => 0, 'hanya_sepatu' => 0];
-                    }
-                    $shoeSizeMap[$size]['total']++;
-                    $shoeSizeMap[$size]['sudah_match']++;
-                    if ($sItem['jk_code'] === 'P') {
-                        $shoeSizeMap[$size]['perempuan']++;
-                    } else {
-                        $shoeSizeMap[$size]['laki_laki']++;
-                    }
-                }
-
-                $allRows[] = [
-                    'id' => 'M-' . $mItem['id'],
-                    'master_id' => $mItem['id'],
-                    'shoe_id' => $sItem['id'],
-                    'match_status' => 'sudah_ada',
-                    'match_status_label' => 'Sudah Ada Data Sepatu',
-                    'match_type' => $mType,
-                    'match_note' => $matchNote,
-                    'has_attribute_diff' => $hasDiff,
-                    'attribute_diffs' => $diffs,
-                    'school_key' => $sKey,
-                    'sekolah' => $mItem['sekolah'],
-                    'sekolah_master' => $mItem['sekolah'],
-                    'sekolah_sepatu' => $sItem['sekolah'],
-                    'pic_nama' => $sItem['pic_nama'] ?? $schoolMap[$sKey]['pic_nama'],
-                    'nama_display' => $mItem['nama_lengkap'],
-                    'nama_master' => $mItem['nama_lengkap'],
-                    'nama_sepatu' => $sItem['nama_lengkap'],
-                    'jk_code' => $mItem['jk_code'] ?: $sItem['jk_code'],
-                    'jk_master' => self::formatGenderLabel($mItem['jk_code']),
-                    'jk_sepatu' => $sItem['jenis_kelamin'],
-                    'status_kepegawaian' => $mItem['status'],
-                    'jabatan_master' => $mItem['jabatan'],
-                    'jabatan_sepatu' => $sItem['jabatan'],
-                    'kategori' => $mItem['kategori'],
-                    'ukuran_sepatu' => $sItem['ukuran_sepatu'],
-                    'panjang_kaki' => $sItem['panjang_kaki'],
-                    'is_anomaly' => $sItem['is_anomaly'],
-                    'anomaly_reason' => $sItem['anomaly_reason'],
-                ];
-            } else {
-                // Missing in Shoe Recap (Belum Ada Data Sepatu)
-                $schoolMap[$sKey]['belum_ada']++;
-                if (isset($genderStats[$jk])) {
-                    $genderStats[$jk]['belum_ada']++;
-                }
-                if (isset($kategoriStats[$kat])) {
-                    $kategoriStats[$kat]['belum_ada']++;
-                }
-                $statusKepegawaianMap[$statusPeg]['belum_ada']++;
-
-                $schoolHasShoeData = ($schoolMap[$sKey]['shoe_total'] ?? 0) > 0;
-                $missingReason = $schoolHasShoeData
-                    ? 'Sekolah sudah kirim rekap sepatu, namun nama ini belum tercantum'
-                    : 'Sekolah belum mengunggah data rekapitulasi sepatu';
-
-                $allRows[] = [
-                    'id' => 'M-' . $mItem['id'],
-                    'master_id' => $mItem['id'],
-                    'shoe_id' => null,
-                    'match_status' => 'belum_ada',
-                    'match_status_label' => 'Belum Ada Data Sepatu',
-                    'match_type' => 'unmatched',
-                    'match_note' => $missingReason,
-                    'has_attribute_diff' => false,
-                    'attribute_diffs' => [],
-                    'school_key' => $sKey,
-                    'sekolah' => $mItem['sekolah'],
-                    'sekolah_master' => $mItem['sekolah'],
-                    'sekolah_sepatu' => null,
-                    'pic_nama' => $schoolMap[$sKey]['pic_nama'] ?? null,
-                    'nama_display' => $mItem['nama_lengkap'],
-                    'nama_master' => $mItem['nama_lengkap'],
-                    'nama_sepatu' => null,
-                    'jk_code' => $mItem['jk_code'],
-                    'jk_master' => self::formatGenderLabel($mItem['jk_code']),
-                    'jk_sepatu' => '-',
-                    'status_kepegawaian' => $mItem['status'],
-                    'jabatan_master' => $mItem['jabatan'],
-                    'jabatan_sepatu' => '-',
-                    'kategori' => $mItem['kategori'],
-                    'ukuran_sepatu' => null,
-                    'panjang_kaki' => null,
-                    'is_anomaly' => false,
-                    'anomaly_reason' => null,
-                ];
+            if (!$sItem[13]) {
+                $schoolMap[$sKey]['hanya_di_sepatu']++;
             }
         }
 
-        // Process Unmatched Shoe Recap rows (Hanya Ada di Rekap Sepatu)
-        $onlyInShoeCount = 0;
-        foreach ($shoeItems as $sItem) {
-            if ($sItem['matched']) {
-                continue;
-            }
-            $onlyInShoeCount++;
-            $sKey = $sItem['school_key'] ?: 'tanpa-sekolah';
-            $jk = $sItem['jk_code'] ?: 'L';
-            $kat = $sItem['kategori'];
-
-            $schoolMap[$sKey]['hanya_di_sepatu']++;
-            if (isset($genderStats[$jk])) {
-                $genderStats[$jk]['hanya_di_sepatu']++;
-            }
-            if (isset($kategoriStats[$kat])) {
-                $kategoriStats[$kat]['hanya_di_sepatu']++;
-            }
-
-            $size = $sItem['ukuran_sepatu'];
-            if ($size) {
-                if (!isset($shoeSizeMap[$size])) {
-                    $shoeSizeMap[$size] = ['ukuran' => $size, 'total' => 0, 'laki_laki' => 0, 'perempuan' => 0, 'sudah_match' => 0, 'hanya_sepatu' => 0];
-                }
-                $shoeSizeMap[$size]['total']++;
-                $shoeSizeMap[$size]['hanya_sepatu']++;
-                if ($sItem['jk_code'] === 'P') {
-                    $shoeSizeMap[$size]['perempuan']++;
-                } else {
-                    $shoeSizeMap[$size]['laki_laki']++;
-                }
-            }
-
-            $allRows[] = [
-                'id' => 'S-' . $sItem['id'],
-                'master_id' => null,
-                'shoe_id' => $sItem['id'],
-                'match_status' => 'hanya_di_sepatu',
-                'match_status_label' => 'Hanya di Rekap Sepatu',
-                'match_type' => 'only_in_shoe',
-                'match_note' => 'Tercatat di rekap ukuran sepatu, tetapi belum terdaftar di Database Guru & Tendik',
-                'has_attribute_diff' => false,
-                'attribute_diffs' => [],
-                'school_key' => $sKey,
-                'sekolah' => $schoolMap[$sKey]['nama_sekolah'] ?? $sItem['sekolah'],
-                'sekolah_master' => null,
-                'sekolah_sepatu' => $sItem['sekolah'],
-                'pic_nama' => $sItem['pic_nama'],
-                'nama_display' => $sItem['nama_lengkap'],
-                'nama_master' => null,
-                'nama_sepatu' => $sItem['nama_lengkap'],
-                'jk_code' => $sItem['jk_code'],
-                'jk_master' => '-',
-                'jk_sepatu' => $sItem['jenis_kelamin'],
-                'status_kepegawaian' => '-',
-                'jabatan_master' => '-',
-                'jabatan_sepatu' => $sItem['jabatan'],
-                'kategori' => $sItem['kategori'],
-                'ukuran_sepatu' => $sItem['ukuran_sepatu'],
-                'panjang_kaki' => $sItem['panjang_kaki'],
-                'is_anomaly' => $sItem['is_anomaly'],
-                'anomaly_reason' => $sItem['anomaly_reason'],
-            ];
-        }
-
-        // 5. Finalize School Comparison Matrix
+        // Compute school statuses
         $schoolsComplete = 0;
         $schoolsPartial = 0;
         $schoolsEmpty = 0;
         $schoolsWithShoe = 0;
         $schoolsMasterCount = 0;
+        $schoolStatusLookup = [];
 
-        $schoolComparisons = [];
-        foreach ($schoolMap as $sKey => $sc) {
+        foreach ($schoolMap as $sKey => &$sc) {
             $mTotal = $sc['master_total'];
             $sTotal = $sc['shoe_total'];
             $matched = $sc['sudah_ada'];
@@ -801,10 +557,413 @@ class GuruTendikComparisonService
             $sc['selisih'] = $sTotal - $mTotal;
             $sc['status_sekolah'] = $statusSekolah;
             $sc['status_label'] = $statusLabel;
-            $schoolComparisons[] = $sc;
+            $schoolStatusLookup[$sKey] = $statusSekolah;
+        }
+        unset($sc);
+
+        // Prepare active filter parameters
+        $filterStatus = trim((string) ($filters['match_status'] ?? ''));
+        $filterSchool = trim((string) ($filters['sekolah'] ?? ''));
+        $filterSchoolKey = $filterSchool !== '' ? self::normalizeSchoolKey($filterSchool) : '';
+        $filterGender = self::normalizeGenderCode($filters['jenis_kelamin'] ?? '');
+        $filterKategori = strtolower(trim((string) ($filters['kategori'] ?? '')));
+        $filterStatusPeg = strtoupper(trim((string) ($filters['status_kepegawaian'] ?? '')));
+        $filterSchoolStatus = trim((string) ($filters['status_sekolah'] ?? ''));
+        $filterSearch = strtolower(trim((string) ($filters['search'] ?? '')));
+
+        // Counters for global summary
+        $exactMatchCount = 0;
+        $similarMatchCount = 0;
+        $crossSchoolMatchCount = 0;
+        $diffAttrCount = 0;
+        $onlyInShoeCount = 0;
+
+        $genderStats = [
+            'L' => ['label' => 'Laki-laki', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
+            'P' => ['label' => 'Perempuan', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
+        ];
+        $kategoriStats = [
+            'Guru' => ['label' => 'Guru / Pengajar', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
+            'Tendik' => ['label' => 'Tenaga Kependidikan (Tendik)', 'master' => 0, 'sudah_ada' => 0, 'belum_ada' => 0, 'hanya_di_sepatu' => 0],
+        ];
+        $statusKepegawaianMap = [];
+        $shoeSizeMap = [];
+
+        // Store lightweight candidate descriptors: [0:isMaster(bool), 1:idx(int), 2:sortGroup(int)]
+        // sortGroup:
+        // 1 = school has shoe data + sudah_ada
+        // 2 = school has shoe data + hanya_di_sepatu
+        // 3 = school has shoe data + belum_ada
+        // 4 = school has NO shoe data + sudah_ada (cross school)
+        // 5 = school has NO shoe data + belum_ada
+        $candidateRefs = [];
+
+        foreach ($masterItems as $mIdx => $mItem) {
+            $sKey = $mItem[8] ?: 'tanpa-sekolah';
+            $jk = $mItem[3] ?: 'L';
+            $kat = $mItem[6];
+            $statusPeg = $mItem[4] !== '' ? strtoupper($mItem[4]) : 'LAINNYA';
+            $schoolHasShoe = (($schoolMap[$sKey]['shoe_total'] ?? 0) > 0);
+
+            if (isset($genderStats[$jk])) {
+                $genderStats[$jk]['master']++;
+            }
+            if (isset($kategoriStats[$kat])) {
+                $kategoriStats[$kat]['master']++;
+            }
+            if (!isset($statusKepegawaianMap[$statusPeg])) {
+                $statusKepegawaianMap[$statusPeg] = [
+                    'status' => $statusPeg,
+                    'master' => 0,
+                    'sudah_ada' => 0,
+                    'belum_ada' => 0,
+                ];
+            }
+            $statusKepegawaianMap[$statusPeg]['master']++;
+
+            if (isset($matches[$mIdx])) {
+                $sIdx = $matches[$mIdx][0];
+                $mType = $matches[$mIdx][1];
+                $sItem = $shoeItems[$sIdx];
+
+                if ($mType === 'exact') {
+                    $exactMatchCount++;
+                } elseif ($mType === 'similar') {
+                    $similarMatchCount++;
+                } else {
+                    $crossSchoolMatchCount++;
+                }
+
+                if (isset($genderStats[$jk])) {
+                    $genderStats[$jk]['sudah_ada']++;
+                }
+                if (isset($kategoriStats[$kat])) {
+                    $kategoriStats[$kat]['sudah_ada']++;
+                }
+                $statusKepegawaianMap[$statusPeg]['sudah_ada']++;
+
+                $hasDiff = (
+                    ($mItem[3] !== '' && $sItem[3] !== '' && $mItem[3] !== $sItem[3]) ||
+                    ($mItem[6] !== $sItem[5]) ||
+                    ($mType === 'cross_school')
+                );
+                if ($hasDiff) {
+                    $diffAttrCount++;
+                    $schoolMap[$sKey]['diff_attr']++;
+                }
+
+                $size = $sItem[6];
+                if ($size) {
+                    if (!isset($shoeSizeMap[$size])) {
+                        $shoeSizeMap[$size] = ['ukuran' => $size, 'total' => 0, 'laki_laki' => 0, 'perempuan' => 0, 'sudah_match' => 0, 'hanya_sepatu' => 0];
+                    }
+                    $shoeSizeMap[$size]['total']++;
+                    $shoeSizeMap[$size]['sudah_match']++;
+                    if ($sItem[3] === 'P') {
+                        $shoeSizeMap[$size]['perempuan']++;
+                    } else {
+                        $shoeSizeMap[$size]['laki_laki']++;
+                    }
+                }
+
+                if ($filterStatus !== '') {
+                    if ($filterStatus === 'diff_attr' && !$hasDiff) {
+                        continue;
+                    }
+                    if ($filterStatus !== 'diff_attr' && $filterStatus !== 'sudah_ada') {
+                        continue;
+                    }
+                }
+                if ($filterSchoolKey !== '' && $sKey !== $filterSchoolKey) {
+                    continue;
+                }
+                if ($filterSchoolStatus !== '' && ($schoolStatusLookup[$sKey] ?? '') !== $filterSchoolStatus) {
+                    continue;
+                }
+                $effJk = $mItem[3] ?: $sItem[3];
+                if ($filterGender !== '' && $effJk !== $filterGender) {
+                    continue;
+                }
+                if ($filterKategori !== '' && strtolower($mItem[6]) !== $filterKategori) {
+                    continue;
+                }
+                if ($filterStatusPeg !== '' && $statusPeg !== $filterStatusPeg) {
+                    continue;
+                }
+                if ($filterSearch !== '') {
+                    $hay = strtolower($mItem[1] . ' ' . $sItem[1] . ' ' . $mItem[7] . ' ' . $sItem[9] . ' ' . $mItem[5] . ' ' . $sItem[4] . ' ' . $mItem[4]);
+                    if (!str_contains($hay, $filterSearch)) {
+                        continue;
+                    }
+                }
+
+                $candidateRefs[] = [true, $mIdx, $schoolHasShoe ? 1 : 4];
+            } else {
+                if (isset($genderStats[$jk])) {
+                    $genderStats[$jk]['belum_ada']++;
+                }
+                if (isset($kategoriStats[$kat])) {
+                    $kategoriStats[$kat]['belum_ada']++;
+                }
+                $statusKepegawaianMap[$statusPeg]['belum_ada']++;
+
+                if ($filterStatus !== '' && $filterStatus !== 'belum_ada') {
+                    continue;
+                }
+                if ($filterSchoolKey !== '' && $sKey !== $filterSchoolKey) {
+                    continue;
+                }
+                if ($filterSchoolStatus !== '' && ($schoolStatusLookup[$sKey] ?? '') !== $filterSchoolStatus) {
+                    continue;
+                }
+                if ($filterGender !== '' && $mItem[3] !== $filterGender) {
+                    continue;
+                }
+                if ($filterKategori !== '' && strtolower($mItem[6]) !== $filterKategori) {
+                    continue;
+                }
+                if ($filterStatusPeg !== '' && $statusPeg !== $filterStatusPeg) {
+                    continue;
+                }
+                if ($filterSearch !== '') {
+                    $hay = strtolower($mItem[1] . ' ' . $mItem[7] . ' ' . $mItem[5] . ' ' . $mItem[4]);
+                    if (!str_contains($hay, $filterSearch)) {
+                        continue;
+                    }
+                }
+
+                $candidateRefs[] = [true, $mIdx, $schoolHasShoe ? 3 : 5];
+            }
         }
 
-        // Sort schools: schools with shoe data first, then by completion percentage desc, then by name asc
+        // Process Unmatched Shoe Recap rows (Hanya Ada di Rekap Sepatu)
+        foreach ($shoeItems as $sIdx => $sItem) {
+            if ($sItem[13]) {
+                continue;
+            }
+            $onlyInShoeCount++;
+            $sKey = $sItem[12] ?: 'tanpa-sekolah';
+            $jk = $sItem[3] ?: 'L';
+            $kat = $sItem[5];
+
+            if (isset($genderStats[$jk])) {
+                $genderStats[$jk]['hanya_di_sepatu']++;
+            }
+            if (isset($kategoriStats[$kat])) {
+                $kategoriStats[$kat]['hanya_di_sepatu']++;
+            }
+
+            $size = $sItem[6];
+            if ($size) {
+                if (!isset($shoeSizeMap[$size])) {
+                    $shoeSizeMap[$size] = ['ukuran' => $size, 'total' => 0, 'laki_laki' => 0, 'perempuan' => 0, 'sudah_match' => 0, 'hanya_sepatu' => 0];
+                }
+                $shoeSizeMap[$size]['total']++;
+                $shoeSizeMap[$size]['hanya_sepatu']++;
+                if ($sItem[3] === 'P') {
+                    $shoeSizeMap[$size]['perempuan']++;
+                } else {
+                    $shoeSizeMap[$size]['laki_laki']++;
+                }
+            }
+
+            if ($filterStatus !== '' && $filterStatus !== 'hanya_di_sepatu') {
+                continue;
+            }
+            if ($filterSchoolKey !== '' && $sKey !== $filterSchoolKey) {
+                continue;
+            }
+            if ($filterSchoolStatus !== '' && ($schoolStatusLookup[$sKey] ?? '') !== $filterSchoolStatus) {
+                continue;
+            }
+            if ($filterGender !== '' && $sItem[3] !== $filterGender) {
+                continue;
+            }
+            if ($filterKategori !== '' && strtolower($sItem[5]) !== $filterKategori) {
+                continue;
+            }
+            if ($filterStatusPeg !== '') {
+                continue;
+            }
+            if ($filterSearch !== '') {
+                $hay = strtolower($sItem[1] . ' ' . $sItem[9] . ' ' . $sItem[4]);
+                if (!str_contains($hay, $filterSearch)) {
+                    continue;
+                }
+            }
+
+            $candidateRefs[] = [false, $sIdx, 2];
+        }
+
+        // Sort candidateRefs by sortGroup (1..5), then school name, then person name
+        usort($candidateRefs, function ($a, $b) use ($masterItems, $shoeItems, $schoolMap) {
+            if ($a[2] !== $b[2]) {
+                return $a[2] <=> $b[2];
+            }
+            $schoolA = $a[0] ? $masterItems[$a[1]][7] : ($schoolMap[$shoeItems[$a[1]][12]]['nama_sekolah'] ?? $shoeItems[$a[1]][9]);
+            $schoolB = $b[0] ? $masterItems[$b[1]][7] : ($schoolMap[$shoeItems[$b[1]][12]]['nama_sekolah'] ?? $shoeItems[$b[1]][9]);
+            $cmpS = strcmp($schoolA, $schoolB);
+            if ($cmpS !== 0) {
+                return $cmpS;
+            }
+            $nameA = $a[0] ? $masterItems[$a[1]][1] : $shoeItems[$a[1]][1];
+            $nameB = $b[0] ? $masterItems[$b[1]][1] : $shoeItems[$b[1]][1];
+            return strcmp($nameA, $nameB);
+        });
+
+        $totalFilteredCount = count($candidateRefs);
+
+        // If pagination is requested, slice candidateRefs BEFORE building heavy associative arrays!
+        $refsToExpand = $page !== null
+            ? array_slice($candidateRefs, max(0, ($page - 1) * $perPage), $perPage)
+            : $candidateRefs;
+        unset($candidateRefs);
+
+        $filteredRows = [];
+        foreach ($refsToExpand as $ref) {
+            $isMaster = $ref[0];
+            $idx = $ref[1];
+
+            if ($isMaster) {
+                $mItem = $masterItems[$idx];
+                $sKey = $mItem[8] ?: 'tanpa-sekolah';
+
+                if (isset($matches[$idx])) {
+                    $sIdx = $matches[$idx][0];
+                    $mType = $matches[$idx][1];
+                    $sItem = $shoeItems[$sIdx];
+
+                    $diffs = [];
+                    if ($mItem[3] !== '' && $sItem[3] !== '' && $mItem[3] !== $sItem[3]) {
+                        $diffs[] = "Jenis Kelamin ({$mItem[3]} vs {$sItem[3]})";
+                    }
+                    if ($mItem[6] !== $sItem[5]) {
+                        $diffs[] = "Kategori ({$mItem[6]} vs {$sItem[5]})";
+                    }
+                    if ($mType === 'cross_school') {
+                        $diffs[] = "Sekolah ({$mItem[7]} vs {$sItem[9]})";
+                    }
+                    $hasDiff = !empty($diffs);
+
+                    $matchNote = match ($mType) {
+                        'exact' => 'Cocok Persis',
+                        'similar' => "Kemiripan Nama (Sepatu: {$sItem[1]})",
+                        'cross_school' => "Cocok Lintas Sekolah ({$sItem[9]})",
+                        default => 'Cocok',
+                    };
+                    if ($hasDiff) {
+                        $matchNote .= ' • Beda ' . implode(', ', $diffs);
+                    }
+
+                    $filteredRows[] = [
+                        'id' => 'M-' . $mItem[0],
+                        'master_id' => $mItem[0],
+                        'shoe_id' => $sItem[0],
+                        'match_status' => 'sudah_ada',
+                        'match_status_label' => 'Sudah Ada Data Sepatu',
+                        'match_type' => $mType,
+                        'match_note' => $matchNote,
+                        'has_attribute_diff' => $hasDiff,
+                        'attribute_diffs' => $diffs,
+                        'school_key' => $sKey,
+                        'sekolah' => $mItem[7],
+                        'sekolah_master' => $mItem[7],
+                        'sekolah_sepatu' => $sItem[9],
+                        'pic_nama' => $sItem[10] ?? $schoolMap[$sKey]['pic_nama'],
+                        'nama_display' => $mItem[1],
+                        'nama_master' => $mItem[1],
+                        'nama_sepatu' => $sItem[1],
+                        'jk_code' => $mItem[3] ?: $sItem[3],
+                        'jk_master' => self::formatGenderLabel($mItem[3]),
+                        'jk_sepatu' => self::formatGenderLabel($sItem[3]),
+                        'status_kepegawaian' => $mItem[4],
+                        'jabatan_master' => $mItem[5],
+                        'jabatan_sepatu' => $sItem[4],
+                        'kategori' => $mItem[6],
+                        'ukuran_sepatu' => $sItem[6],
+                        'panjang_kaki' => $sItem[7],
+                        'is_anomaly' => $sItem[8],
+                    ];
+                } else {
+                    $schoolHasShoeData = ($schoolMap[$sKey]['shoe_total'] ?? 0) > 0;
+                    $missingReason = $schoolHasShoeData
+                        ? 'Sekolah sudah kirim rekap sepatu, namun nama ini belum tercantum'
+                        : 'Sekolah belum mengunggah data rekapitulasi sepatu';
+
+                    $filteredRows[] = [
+                        'id' => 'M-' . $mItem[0],
+                        'master_id' => $mItem[0],
+                        'shoe_id' => null,
+                        'match_status' => 'belum_ada',
+                        'match_status_label' => 'Belum Ada Data Sepatu',
+                        'match_type' => 'unmatched',
+                        'match_note' => $missingReason,
+                        'has_attribute_diff' => false,
+                        'attribute_diffs' => [],
+                        'school_key' => $sKey,
+                        'sekolah' => $mItem[7],
+                        'sekolah_master' => $mItem[7],
+                        'sekolah_sepatu' => null,
+                        'pic_nama' => $schoolMap[$sKey]['pic_nama'] ?? null,
+                        'nama_display' => $mItem[1],
+                        'nama_master' => $mItem[1],
+                        'nama_sepatu' => null,
+                        'jk_code' => $mItem[3],
+                        'jk_master' => self::formatGenderLabel($mItem[3]),
+                        'jk_sepatu' => '-',
+                        'status_kepegawaian' => $mItem[4],
+                        'jabatan_master' => $mItem[5],
+                        'jabatan_sepatu' => '-',
+                        'kategori' => $mItem[6],
+                        'ukuran_sepatu' => null,
+                        'panjang_kaki' => null,
+                        'is_anomaly' => false,
+                    ];
+                }
+            } else {
+                $sItem = $shoeItems[$idx];
+                $sKey = $sItem[12] ?: 'tanpa-sekolah';
+
+                $filteredRows[] = [
+                    'id' => 'S-' . $sItem[0],
+                    'master_id' => null,
+                    'shoe_id' => $sItem[0],
+                    'match_status' => 'hanya_di_sepatu',
+                    'match_status_label' => 'Hanya di Rekap Sepatu',
+                    'match_type' => 'only_in_shoe',
+                    'match_note' => 'Tercatat di rekap ukuran sepatu, tetapi belum terdaftar di Database Guru & Tendik',
+                    'has_attribute_diff' => false,
+                    'attribute_diffs' => [],
+                    'school_key' => $sKey,
+                    'sekolah' => $schoolMap[$sKey]['nama_sekolah'] ?? $sItem[9],
+                    'sekolah_master' => null,
+                    'sekolah_sepatu' => $sItem[9],
+                    'pic_nama' => $sItem[10],
+                    'nama_display' => $sItem[1],
+                    'nama_master' => null,
+                    'nama_sepatu' => $sItem[1],
+                    'jk_code' => $sItem[3],
+                    'jk_master' => '-',
+                    'jk_sepatu' => self::formatGenderLabel($sItem[3]),
+                    'status_kepegawaian' => '-',
+                    'jabatan_master' => '-',
+                    'jabatan_sepatu' => $sItem[4],
+                    'kategori' => $sItem[5],
+                    'ukuran_sepatu' => $sItem[6],
+                    'panjang_kaki' => $sItem[7],
+                    'is_anomaly' => $sItem[8],
+                ];
+            }
+        }
+
+        $totalMaster = count($masterItems);
+        $totalShoeRecap = count($shoeItems);
+        $sudahAdaCount = count($matches);
+        unset($masterItems, $shoeItems, $matches, $refsToExpand);
+
+        // Sort schoolComparisons: schools with shoe data first, then by completion percentage desc, then by name asc
+        $schoolComparisons = array_values($schoolMap);
+        unset($schoolMap);
         usort($schoolComparisons, function ($a, $b) {
             $aHas = ($a['shoe_total'] > 0) ? 1 : 0;
             $bHas = ($b['shoe_total'] > 0) ? 1 : 0;
@@ -818,12 +977,12 @@ class GuruTendikComparisonService
         });
 
         // Finalize breakdowns
-        foreach ($genderStats as $k => &$g) {
+        foreach ($genderStats as &$g) {
             $g['persentase'] = $g['master'] > 0 ? round(($g['sudah_ada'] / $g['master']) * 100, 1) : 0.0;
         }
         unset($g);
 
-        foreach ($kategoriStats as $k => &$kt) {
+        foreach ($kategoriStats as &$kt) {
             $kt['persentase'] = $kt['master'] > 0 ? round(($kt['sudah_ada'] / $kt['master']) * 100, 1) : 0.0;
         }
         unset($kt);
@@ -837,109 +996,6 @@ class GuruTendikComparisonService
 
         ksort($shoeSizeMap);
         $shoeSizeDistribution = array_values($shoeSizeMap);
-
-        // 6. Apply Filters to Individual Rows & School Comparisons
-        $filterStatus = trim((string) ($filters['match_status'] ?? ''));
-        $filterSchool = trim((string) ($filters['sekolah'] ?? ''));
-        $filterSchoolKey = $filterSchool !== '' ? self::normalizeSchoolKey($filterSchool) : '';
-        $filterGender = trim((string) ($filters['jenis_kelamin'] ?? ''));
-        $filterKategori = trim((string) ($filters['kategori'] ?? ''));
-        $filterStatusPeg = trim((string) ($filters['status_kepegawaian'] ?? ''));
-        $filterSchoolStatus = trim((string) ($filters['status_sekolah'] ?? ''));
-        $filterSearch = strtolower(trim((string) ($filters['search'] ?? '')));
-
-        // Build map of school_key => status_sekolah for filtering
-        $schoolStatusLookup = [];
-        foreach ($schoolComparisons as $sc) {
-            $schoolStatusLookup[$sc['school_key']] = $sc['status_sekolah'];
-        }
-
-        $filteredRows = array_values(array_filter($allRows, function ($row) use (
-            $filterStatus,
-            $filterSchoolKey,
-            $filterGender,
-            $filterKategori,
-            $filterStatusPeg,
-            $filterSchoolStatus,
-            $filterSearch,
-            $schoolStatusLookup
-        ) {
-            if ($filterStatus !== '') {
-                if ($filterStatus === 'diff_attr') {
-                    if (!$row['has_attribute_diff']) {
-                        return false;
-                    }
-                } elseif ($FilterStatusCheck = ($row['match_status'] !== $filterStatus)) {
-                    return false;
-                }
-            }
-
-            if ($filterSchoolKey !== '' && $row['school_key'] !== $filterSchoolKey) {
-                return false;
-            }
-
-            if ($filterSchoolStatus !== '') {
-                $scStat = $schoolStatusLookup[$row['school_key']] ?? '';
-                if ($scStat !== $filterSchoolStatus) {
-                    return false;
-                }
-            }
-
-            if ($filterGender !== '') {
-                $targetJk = self::normalizeGenderCode($filterGender);
-                if ($targetJk !== '' && $row['jk_code'] !== $targetJk) {
-                    return false;
-                }
-            }
-
-            if ($filterKategori !== '' && strtolower($row['kategori']) !== strtolower($filterKategori)) {
-                return false;
-            }
-
-            if ($filterStatusPeg !== '' && strtoupper($row['status_kepegawaian']) !== strtoupper($filterStatusPeg)) {
-                return false;
-            }
-
-            if ($filterSearch !== '') {
-                $haystack = strtolower(
-                    ($row['nama_display'] ?? '') . ' ' .
-                    ($row['nama_master'] ?? '') . ' ' .
-                    ($row['nama_sepatu'] ?? '') . ' ' .
-                    ($row['sekolah'] ?? '') . ' ' .
-                    ($row['sekolah_sepatu'] ?? '') . ' ' .
-                    ($row['jabatan_master'] ?? '') . ' ' .
-                    ($row['jabatan_sepatu'] ?? '') . ' ' .
-                    ($row['status_kepegawaian'] ?? '')
-                );
-                if (!str_contains($haystack, $filterSearch)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }));
-
-        // Sort filtered rows: matched first (so user immediately sees comparisons), then missing from schools that have shoe data, then others
-        usort($filteredRows, function ($a, $b) use ($schoolMap) {
-            $order = ['sudah_ada' => 1, 'hanya_di_sepatu' => 2, 'belum_ada' => 3];
-            $oa = $order[$a['match_status']] ?? 9;
-            $ob = $order[$b['match_status']] ?? 9;
-
-            // Prioritize schools that have shoe data
-            $aSchoolHasShoe = (($schoolMap[$a['school_key']]['shoe_total'] ?? 0) > 0) ? 1 : 0;
-            $bSchoolHasShoe = (($schoolMap[$b['school_key']]['shoe_total'] ?? 0) > 0) ? 1 : 0;
-            if ($aSchoolHasShoe !== $bSchoolHasShoe) {
-                return $bSchoolHasShoe <=> $aSchoolHasShoe;
-            }
-            if ($oa !== $ob) {
-                return $oa <=> $ob;
-            }
-            $cmpSchool = strcmp($a['sekolah'], $b['sekolah']);
-            if ($cmpSchool !== 0) {
-                return $cmpSchool;
-            }
-            return strcmp($a['nama_display'], $b['nama_display']);
-        });
 
         // Filter schoolComparisons if search or status_sekolah or sekolah filter is active
         $filteredSchools = array_values(array_filter($schoolComparisons, function ($sc) use ($filterSchoolKey, $filterSchoolStatus, $filterSearch) {
@@ -958,9 +1014,6 @@ class GuruTendikComparisonService
             return true;
         }));
 
-        $totalMaster = count($masterItems);
-        $totalShoeRecap = count($shoeItems);
-        $sudahAdaCount = count($matches);
         $belumAdaCount = max(0, $totalMaster - $sudahAdaCount);
 
         // Unique school options for dropdown
@@ -1005,9 +1058,8 @@ class GuruTendikComparisonService
                 ],
             ],
             'school_comparisons' => $filteredSchools,
-            'all_school_comparisons' => $schoolComparisons,
             'filtered_rows' => $filteredRows,
-            'all_rows' => $allRows,
+            'total_filtered_count' => $totalFilteredCount,
             'filter_options' => [
                 'schools' => $schoolOptions,
                 'status_kepegawaian' => $statusPegOptions,
@@ -1020,7 +1072,10 @@ class GuruTendikComparisonService
      */
     public function generateComparisonExcel(array $filters = []): Spreadsheet
     {
-        $data = $this->compare($filters);
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+
+        $data = $this->compare($filters, null);
         $summary = $data['summary'];
         $schools = $data['school_comparisons'];
         $rows = $data['filtered_rows'];
@@ -1080,27 +1135,30 @@ class GuruTendikComparisonService
         }
         $this->styleHeaderRow($sheet1, 'A4:L4', '0F766E');
 
-        $r = 5;
+        $s1Rows = [];
         foreach ($schools as $idx => $sc) {
-            $sheet1->setCellValue("A{$r}", $idx + 1);
-            $sheet1->setCellValue("B{$r}", $sc['nama_sekolah']);
-            $sheet1->setCellValue("C{$r}", $sc['nama_sekolah_sepatu'] ?? '-');
-            $sheet1->setCellValue("D{$r}", $sc['pic_nama'] ?? '-');
-            $sheet1->setCellValue("E{$r}", "{$sc['master_total']} ({$sc['master_l']}L / {$sc['master_p']}P)");
-            $sheet1->setCellValue("F{$r}", $sc['master_guru']);
-            $sheet1->setCellValue("G{$r}", $sc['master_tendik']);
-            $sheet1->setCellValue("H{$r}", $sc['shoe_total']);
-            $sheet1->setCellValue("I{$r}", $sc['sudah_ada']);
-            $sheet1->setCellValue("J{$r}", $sc['belum_ada']);
-            $sheet1->setCellValue("K{$r}", $sc['hanya_di_sepatu']);
-            $sheet1->setCellValue("L{$r}", $sc['persentase'] . '%');
-            $r++;
+            $s1Rows[] = [
+                $idx + 1,
+                $sc['nama_sekolah'],
+                $sc['nama_sekolah_sepatu'] ?? '-',
+                $sc['pic_nama'] ?? '-',
+                "{$sc['master_total']} ({$sc['master_l']}L / {$sc['master_p']}P)",
+                $sc['master_guru'],
+                $sc['master_tendik'],
+                $sc['shoe_total'],
+                $sc['sudah_ada'],
+                $sc['belum_ada'],
+                $sc['hanya_di_sepatu'],
+                $sc['persentase'] . '%',
+            ];
         }
-        if ($r > 5) {
-            $this->styleDataRows($sheet1, 'A5:L' . ($r - 1));
+        if (!empty($s1Rows)) {
+            $sheet1->fromArray($s1Rows, null, 'A5');
+            $this->styleDataRows($sheet1, 'A5:L' . (4 + count($s1Rows)));
         }
-        foreach (range('A', 'L') as $col) {
-            $sheet1->getColumnDimension($col)->setAutoSize(true);
+        $s1Widths = ['A' => 6, 'B' => 30, 'C' => 35, 'D' => 18, 'E' => 20, 'F' => 14, 'G' => 14, 'H' => 18, 'I' => 20, 'J' => 20, 'K' => 20, 'L' => 16];
+        foreach ($s1Widths as $col => $w) {
+            $sheet1->getColumnDimension($col)->setWidth($w);
         }
 
         // =========================================================================
@@ -1110,6 +1168,7 @@ class GuruTendikComparisonService
         $sheet2->setTitle('Sudah Ada Data Sepatu');
         $matchedRows = array_values(array_filter($rows, fn ($item) => $item['match_status'] === 'sudah_ada'));
         $this->populatePersonSheet($sheet2, 'DAFTAR GURU & TENDIK YANG SUDAH ADA DATA SEPATU', $matchedRows, '059669');
+        unset($matchedRows);
 
         // =========================================================================
         // SHEET 3: BELUM ADA DATA SEPATU
@@ -1118,6 +1177,7 @@ class GuruTendikComparisonService
         $sheet3->setTitle('Belum Ada Data Sepatu');
         $missingRows = array_values(array_filter($rows, fn ($item) => $item['match_status'] === 'belum_ada'));
         $this->populatePersonSheet($sheet3, 'DAFTAR GURU & TENDIK YANG BELUM ADA DATA SEPATU', $missingRows, 'DC2626');
+        unset($missingRows);
 
         // =========================================================================
         // SHEET 4: HANYA DI REKAP SEPATU
@@ -1126,6 +1186,7 @@ class GuruTendikComparisonService
         $sheet4->setTitle('Hanya di Rekap Sepatu');
         $onlyShoeRows = array_values(array_filter($rows, fn ($item) => $item['match_status'] === 'hanya_di_sepatu'));
         $this->populatePersonSheet($sheet4, 'DAFTAR GURU & TENDIK HANYA DI REKAP SEPATU (BELUM DI MASTER)', $onlyShoeRows, 'D97706');
+        unset($onlyShoeRows, $rows);
 
         $spreadsheet->setActiveSheetIndex(0);
 
@@ -1161,30 +1222,47 @@ class GuruTendikComparisonService
         }
         $this->styleHeaderRow($sheet, 'A3:M3', $headerColorHex);
 
-        $r = 4;
+        $arrayData = [];
         foreach ($rows as $idx => $item) {
-            $sheet->setCellValue("A{$r}", $idx + 1);
-            $sheet->setCellValue("B{$r}", $item['match_status_label']);
-            $sheet->setCellValue("C{$r}", $item['sekolah']);
-            $sheet->setCellValue("D{$r}", $item['nama_master'] ?? '-');
-            $sheet->setCellValue("E{$r}", $item['nama_sepatu'] ?? '-');
-            $sheet->setCellValue("F{$r}", $item['jk_master']);
-            $sheet->setCellValue("G{$r}", $item['jk_sepatu']);
-            $sheet->setCellValue("H{$r}", $item['status_kepegawaian']);
-            $sheet->setCellValue("I{$r}", $item['jabatan_master']);
-            $sheet->setCellValue("J{$r}", $item['jabatan_sepatu']);
-            $sheet->setCellValue("K{$r}", $item['ukuran_sepatu'] ?? '-');
-            $sheet->setCellValue("L{$r}", $item['panjang_kaki'] ?? '-');
-            $sheet->setCellValue("M{$r}", $item['match_note']);
-            $r++;
+            $arrayData[] = [
+                $idx + 1,
+                $item['match_status_label'],
+                $item['sekolah'],
+                $item['nama_master'] ?? '-',
+                $item['nama_sepatu'] ?? '-',
+                $item['jk_master'],
+                $item['jk_sepatu'],
+                $item['status_kepegawaian'],
+                $item['jabatan_master'],
+                $item['jabatan_sepatu'],
+                $item['ukuran_sepatu'] ?? '-',
+                $item['panjang_kaki'] ?? '-',
+                $item['match_note'],
+            ];
         }
 
-        if ($r > 4) {
-            $this->styleDataRows($sheet, 'A4:M' . ($r - 1));
+        if (!empty($arrayData)) {
+            $sheet->fromArray($arrayData, null, 'A4');
+            $this->styleDataRows($sheet, 'A4:M' . (3 + count($arrayData)));
         }
 
-        foreach (range('A', 'M') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
+        $widths = [
+            'A' => 6,
+            'B' => 24,
+            'C' => 28,
+            'D' => 32,
+            'E' => 32,
+            'F' => 14,
+            'G' => 14,
+            'H' => 18,
+            'I' => 22,
+            'J' => 22,
+            'K' => 14,
+            'L' => 16,
+            'M' => 42,
+        ];
+        foreach ($widths as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
         }
     }
 
@@ -1219,4 +1297,3 @@ class GuruTendikComparisonService
         ]);
     }
 }
-

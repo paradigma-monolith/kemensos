@@ -21,6 +21,9 @@ class GuruTendikComparisonController extends Controller
      */
     public function index(Request $request): Response
     {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
         $filters = [
             'match_status' => $request->query('match_status', ''),
             'sekolah' => $request->query('sekolah', ''),
@@ -32,19 +35,14 @@ class GuruTendikComparisonController extends Controller
             'tab' => $request->query('tab', 'records'),
         ];
 
-        $comparison = $this->comparisonService->compare($filters);
-
-        // Paginate filtered individual rows (50 per page) to keep Inertia payload fast
         $perPage = 50;
         $currentPage = max(1, (int) $request->query('page', 1));
-        $filteredRows = $comparison['filtered_rows'];
-        $totalRows = count($filteredRows);
-        $offset = ($currentPage - 1) * $perPage;
-        $pagedItems = array_slice($filteredRows, $offset, $perPage);
+
+        $comparison = $this->comparisonService->compare($filters, $currentPage, $perPage);
 
         $paginator = new LengthAwarePaginator(
-            $pagedItems,
-            $totalRows,
+            $comparison['filtered_rows'],
+            $comparison['total_filtered_count'] ?? count($comparison['filtered_rows']),
             $perPage,
             $currentPage,
             [
@@ -67,6 +65,9 @@ class GuruTendikComparisonController extends Controller
      */
     public function exportExcel(Request $request): StreamedResponse
     {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+
         $filters = [
             'match_status' => $request->query('match_status', ''),
             'sekolah' => $request->query('sekolah', ''),
@@ -82,11 +83,14 @@ class GuruTendikComparisonController extends Controller
 
         return response()->streamDownload(function () use ($spreadsheet) {
             $writer = new Xlsx($spreadsheet);
+            $writer->setPreCalculateFormulas(false);
             $writer->save('php://output');
+
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Cache-Control' => 'max-age=0',
         ]);
     }
 }
-
