@@ -2,7 +2,6 @@
 import { ref, computed, watch } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
-import { useSidebar } from '../../Composables/useSidebar';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -27,8 +26,6 @@ import {
   Table2,
   ArrowLeftRight
 } from 'lucide-vue-next';
-
-const { layoutPaddingClass } = useSidebar();
 
 const props = defineProps({
   stats: {
@@ -357,13 +354,10 @@ const maxRekapSekolahTotal = computed(() => {
 <template>
   <Head title="Database Import Guru & Tendik — Format Rekap Total Revisi" />
 
-  <div
-    class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white transition-all duration-300"
-    :class="layoutPaddingClass"
-  >
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white transition-colors duration-200">
     <HybridNavbar mode="inertia" currentRoute="guru-tendik" />
 
-    <main class="w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
       <!-- Flash Notifications & Warnings -->
       <div v-if="page.props.flash?.success" class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 flex items-start gap-3 backdrop-blur-md shadow-sm">
         <CheckCircle2 class="w-5 h-5 flex-shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />

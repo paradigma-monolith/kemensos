@@ -2,9 +2,6 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
-import { useSidebar } from '../../composables/useSidebar';
-
-const { layoutPaddingClass } = useSidebar();
 import {
   ArrowLeftRight,
   FileSpreadsheet,
@@ -191,15 +188,12 @@ const maxShoeSizeCount = computed(() => {
 <template>
   <Head title="Perbandingan Sepatu vs Guru & Tendik" />
 
-  <div
-    class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-all duration-300"
-    :class="layoutPaddingClass"
-  >
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
     <!-- Top Hybrid Navigation Bar -->
     <HybridNavbar currentRoute="guru-tendik-comparison" />
 
     <!-- Main Content Container -->
-    <main class="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <!-- Page Header & Action Bar -->
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900/80 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
         <div class="space-y-1">

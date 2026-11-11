@@ -56,26 +56,6 @@ Route::middleware('auth')->group(function () {
         Route::patch('/recipients/{recipient}', [ShoeController::class, 'updateRecipient'])->name('recipient.update');
     });
 
-    // Seragam / Uniform Recapitulation Routes
-    Route::prefix('uniforms')->name('uniforms.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\UniformController::class, 'index'])->name('index');
-        Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
-        Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
-        Route::get('/export/excel', [\App\Http\Controllers\UniformController::class, 'exportExcel'])->name('export.excel');
-        Route::get('/batches/{batch}/download', [\App\Http\Controllers\UniformController::class, 'downloadBatch'])->name('batch.download');
-        Route::delete('/batches/{batch}', [\App\Http\Controllers\UniformController::class, 'destroyBatch'])->name('batch.destroy');
-        Route::post('/sync-storage', [\App\Http\Controllers\UniformController::class, 'syncStorage'])->name('sync.storage');
-    });
-    Route::prefix('seragam')->name('seragam.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\UniformController::class, 'index'])->name('index');
-        Route::post('/parse', [\App\Http\Controllers\UniformController::class, 'parse'])->name('parse');
-        Route::post('/import', [\App\Http\Controllers\UniformController::class, 'import'])->name('import');
-        Route::get('/export/excel', [\App\Http\Controllers\UniformController::class, 'exportExcel'])->name('export.excel');
-        Route::get('/batches/{batch}/download', [\App\Http\Controllers\UniformController::class, 'downloadBatch'])->name('batch.download');
-        Route::delete('/batches/{batch}', [\App\Http\Controllers\UniformController::class, 'destroyBatch'])->name('batch.destroy');
-        Route::post('/sync-storage', [\App\Http\Controllers\UniformController::class, 'syncStorage'])->name('sync.storage');
-    });
-
     // Database Import Guru & Tendik (FORMAT REKAP TOTAL REVISI.xlsx)
     Route::prefix('guru-tendik')->name('guru-tendik.')->group(function () {
         Route::get('/', [GuruTendikController::class, 'index'])->name('index');

@@ -489,13 +489,13 @@ class ShoeRecapTest extends TestCase
         );
     }
 
-    public function test_import_batches_paginated_15_per_page_and_preserves_tab(): void
+    public function test_import_batches_paginated_10_per_page_and_preserves_tab(): void
     {
         $user = User::factory()->create();
         $school = School::create(['nama_sekolah' => 'Sekolah Batches']);
 
-        // Create 20 batches
-        for ($i = 1; $i <= 20; $i++) {
+        // Create 15 batches
+        for ($i = 1; $i <= 15; $i++) {
             ShoeImportBatch::create([
                 'school_id' => $school->id,
                 'file_name' => "file_{$i}.xlsx",
@@ -509,8 +509,8 @@ class ShoeRecapTest extends TestCase
             $page->component('Shoes/Index')
                 ->where('filters.tab', 'batches')
                 ->has('batches.data', 5)
-                ->where('batches.total', 20)
-                ->where('batches.per_page', 15)
+                ->where('batches.total', 15)
+                ->where('batches.per_page', 10)
                 ->where('batches.current_page', 2)
         );
     }

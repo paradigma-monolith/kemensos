@@ -2,9 +2,6 @@
 import { ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
-import { useSidebar } from '../../composables/useSidebar';
-
-const { layoutPaddingClass } = useSidebar();
 import { 
   History, 
   ShieldAlert, 
@@ -63,13 +60,10 @@ const getUrl = (path) => {
 <template>
   <Head title="Audit Trail & Riwayat Keamanan - Hybrid Laravel" />
 
-  <div 
-    class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white pb-20 transition-all duration-300 overflow-x-clip"
-    :class="layoutPaddingClass"
-  >
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-indigo-500 selection:text-white pb-20 transition-colors duration-200 overflow-x-clip">
     <HybridNavbar mode="inertia" currentRoute="audit" />
 
-    <main class="w-full px-4 sm:px-6 lg:px-8 pt-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
       <!-- Header -->
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
