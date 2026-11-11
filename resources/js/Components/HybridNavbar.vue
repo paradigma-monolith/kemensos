@@ -11,8 +11,7 @@ import {
   Menu,
   X,
   Radio,
-  CheckCheck,
-  Shirt
+  CheckCheck
 } from 'lucide-vue-next';
 import AdminSidebar from './AdminSidebar.vue';
 import ThemeSwitcher from './ThemeSwitcher.vue';
@@ -50,6 +49,8 @@ const activeNav = computed(() => {
   if (p.includes('/audit-logs')) return 'audit';
   if (p.includes('/profile')) return 'profile';
   if (p.includes('/uniforms') || p.includes('/seragam')) return 'uniforms';
+  if (p.includes('/guru-tendik-comparison')) return 'guru-tendik-comparison';
+  if (p.includes('/guru-tendik')) return 'guru-tendik';
   if (p.includes('/shoes')) return 'shoes';
   if (p.includes('/dashboard') || p === '/' || p.endsWith('/public') || p.endsWith('/public/')) return 'dashboard';
   return '';
@@ -57,6 +58,8 @@ const activeNav = computed(() => {
 
 const activeNavTitle = computed(() => {
   if (activeNav.value === 'uniforms') return 'Rekapitulasi Seragam';
+  if (activeNav.value === 'guru-tendik-comparison') return 'Perbandingan Guru & Tendik';
+  if (activeNav.value === 'guru-tendik') return 'Data Guru & Tendik';
   if (activeNav.value === 'shoes') return 'Rekapitulasi Sepatu';
   if (activeNav.value === 'audit') return 'Audit Trail Logs';
   if (activeNav.value === 'profile') return 'Profil Akun';

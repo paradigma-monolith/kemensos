@@ -109,6 +109,15 @@ const selectedJenjang = ref(props.filters.jenjang || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
 const selectedPic = ref(props.filters.pic || '');
+const deduplicateExport = ref(false);
+
+const excelExportUrl = computed(() => {
+  const params = new URLSearchParams();
+  if (selectedSchool.value) params.append('school_id', selectedSchool.value);
+  if (deduplicateExport.value) params.append('deduplicate', '1');
+  const query = params.toString();
+  return getUrl(query ? `/shoes/export/excel?${query}` : '/shoes/export/excel');
+});
 
 // Side-by-Side Comparator State
 const schoolAId = ref(props.comparator.school_a ? String(props.comparator.school_a.id) : '');
@@ -508,13 +517,30 @@ const schoolComparisonChartOption = computed(() => {
             <span>Kelola &amp; Import Data</span>
           </Link>
 
-          <a
-            :href="getUrl('/shoes/export/excel')"
-            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-xs active:scale-95 transition-all cursor-pointer"
-          >
-            <Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Ekspor Excel</span>
-          </a>
+          <div class="inline-flex flex-wrap items-center gap-2 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <label
+              class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer select-none transition-colors"
+              :class="deduplicateExport
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'"
+              title="Jika dicentang, data penerima dengan Nama dan Sekolah yang sama akan dihapus salah satunya agar tidak duplikat pada hasil Ekspor Excel"
+            >
+              <input
+                v-model="deduplicateExport"
+                type="checkbox"
+                class="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+              />
+              <span>Hapus Duplikat (Nama &amp; Sekolah)</span>
+            </label>
+
+            <a
+              :href="excelExportUrl"
+              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs active:scale-95 transition-all cursor-pointer"
+            >
+              <Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>{{ deduplicateExport ? 'Ekspor Excel (Tanpa Duplikat)' : 'Ekspor Excel' }}</span>
+            </a>
+          </div>
         </div>
       </div>
 

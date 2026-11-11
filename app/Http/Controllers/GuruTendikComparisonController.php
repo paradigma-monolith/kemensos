@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\GuruTendikComparisonService;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Inertia\Inertia;
+use Inertia\Response;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class GuruTendikComparisonController extends Controller
+{
+    public function __construct(
+        protected GuruTendikComparisonService $comparisonService
+    ) {}
+
+    /**
+     * Display the Comparison Dashboard between Shoe Recap (Guru & Tendik) and Master Guru & Tendik.
+     */
+    public function index(Request $request): Response
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
+        $filters = [
+            'match_status' => $request->query('match_status', ''),
+            'sekolah' => $request->query('sekolah', ''),
+            'status_sekolah' => $request->query('status_sekolah', ''),
+            'jenis_kelamin' => $request->query('jenis_kelamin', ''),
+            'kategori' => $request->query('kategori', ''),
+            'status_kepegawaian' => $request->query('status_kepegawaian', ''),
+            'search' => $request->query('search', ''),
+            'tab' => $request->query('tab', 'records'),
+        ];
+
+        $perPage = 50;
+        $currentPage = max(1, (int) $request->query('page', 1));
+
+        $comparison = $this->comparisonService->compare($filters, $currentPage, $perPage);
+
+        $paginator = new LengthAwarePaginator(
+            $comparison['filtered_rows'],
+            $comparison['total_filtered_count'] ?? count($comparison['filtered_rows']),
+            $perPage,
+            $currentPage,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+
+        return Inertia::render('GuruTendik/Comparison', [
+            'summary' => $comparison['summary'],
+            'schoolComparisons' => $comparison['school_comparisons'],
+            'records' => $paginator,
+            'filterOptions' => $comparison['filter_options'],
+            'filters' => $filters,
+        ]);
+    }
+
+    /**
+     * Export the comparison report to an Excel (.xlsx) file.
+     */
+    public function exportExcel(Request $request): StreamedResponse
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+
+        $filters = [
+            'match_status' => $request->query('match_status', ''),
+            'sekolah' => $request->query('sekolah', ''),
+            'status_sekolah' => $request->query('status_sekolah', ''),
+            'jenis_kelamin' => $request->query('jenis_kelamin', ''),
+            'kategori' => $request->query('kategori', ''),
+            'status_kepegawaian' => $request->query('status_kepegawaian', ''),
+            'search' => $request->query('search', ''),
+        ];
+
+        $spreadsheet = $this->comparisonService->generateComparisonExcel($filters);
+        $fileName = 'PERBANDINGAN_SEPATU_VS_GURU_TENDIK_' . now()->format('Ymd_His') . '.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->setPreCalculateFormulas(false);
+            $writer->save('php://output');
+
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'max-age=0',
+        ]);
+    }
+}

@@ -3,6 +3,8 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\GuruTendikComparisonController;
+use App\Http\Controllers\GuruTendikController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShoeController;
@@ -72,6 +74,24 @@ Route::middleware('auth')->group(function () {
         Route::get('/batches/{batch}/download', [\App\Http\Controllers\UniformController::class, 'downloadBatch'])->name('batch.download');
         Route::delete('/batches/{batch}', [\App\Http\Controllers\UniformController::class, 'destroyBatch'])->name('batch.destroy');
         Route::post('/sync-storage', [\App\Http\Controllers\UniformController::class, 'syncStorage'])->name('sync.storage');
+    });
+
+    // Database Import Guru & Tendik (FORMAT REKAP TOTAL REVISI.xlsx)
+    Route::prefix('guru-tendik')->name('guru-tendik.')->group(function () {
+        Route::get('/', [GuruTendikController::class, 'index'])->name('index');
+        Route::post('/import', [GuruTendikController::class, 'import'])->name('import');
+        Route::get('/export/excel', [GuruTendikController::class, 'exportExcel'])->name('export.excel');
+        Route::get('/template', [GuruTendikController::class, 'downloadTemplate'])->name('template');
+        Route::get('/batches/{batch}/download', [GuruTendikController::class, 'downloadBatch'])->name('batch.download');
+        Route::delete('/batches/{batch}', [GuruTendikController::class, 'destroyBatch'])->name('batch.destroy');
+        Route::patch('/records/{record}', [GuruTendikController::class, 'updateRecord'])->name('record.update');
+        Route::delete('/records/{record}', [GuruTendikController::class, 'destroyRecord'])->name('record.destroy');
+    });
+
+    // Perbandingan Rekapitulasi Sepatu (Guru & Tendik) vs Database Guru & Tendik
+    Route::prefix('guru-tendik-comparison')->name('guru-tendik.comparison')->group(function () {
+        Route::get('/', [GuruTendikComparisonController::class, 'index']);
+        Route::get('/export/excel', [GuruTendikComparisonController::class, 'exportExcel'])->name('.export');
     });
 
     // Profile & Account Management

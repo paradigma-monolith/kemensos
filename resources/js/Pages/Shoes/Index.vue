@@ -28,7 +28,8 @@ import {
   RefreshCw,
   Info,
   Edit2,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeftRight
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -422,11 +423,15 @@ const activeSchoolObj = computed(() => {
 });
 
 // Download Export Links
+const deduplicateExport = ref(false);
+
 const excelExportUrl = computed(() => {
   const params = new URLSearchParams();
   if (selectedSchool.value) params.append('school_id', selectedSchool.value);
   if (selectedJenjang.value) params.append('jenjang', selectedJenjang.value);
-  return getUrl(`/shoes/export/excel?${params.toString()}`);
+  if (deduplicateExport.value) params.append('deduplicate', '1');
+  const query = params.toString();
+  return getUrl(query ? `/shoes/export/excel?${query}` : '/shoes/export/excel');
 });
 </script>
 
@@ -488,14 +493,42 @@ const excelExportUrl = computed(() => {
             Import Excel Baru
           </button>
 
-          <!-- Export Excel Button -->
+          <!-- Quick Navigation to Guru & Tendik Comparison -->
           <a
-            :href="excelExportUrl"
-            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm active:scale-95 transition-all cursor-pointer"
+            :href="getUrl('/guru-tendik-comparison')"
+            @click.prevent="router.visit(getUrl('/guru-tendik-comparison'))"
+            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/60 border border-violet-200 dark:border-violet-800 hover:bg-violet-100 dark:hover:bg-violet-900/60 shadow-sm active:scale-95 transition-all cursor-pointer"
+            title="Bandingkan Data Sepatu (Guru & Tendik) dengan Database Guru & Tendik"
           >
-            <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            Export Excel
+            <ArrowLeftRight class="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            Komparasi Guru &amp; Tendik
           </a>
+
+          <!-- Export Excel Group with Deduplicate Option -->
+          <div class="inline-flex flex-wrap items-center gap-2 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <label
+              class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer select-none transition-colors"
+              :class="deduplicateExport
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'"
+              title="Jika dicentang, data penerima dengan Nama dan Sekolah yang sama akan dihapus salah satunya agar tidak duplikat pada hasil Export Excel"
+            >
+              <input
+                v-model="deduplicateExport"
+                type="checkbox"
+                class="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 cursor-pointer"
+              />
+              <span>Hapus Duplikat (Nama &amp; Sekolah)</span>
+            </label>
+
+            <a
+              :href="excelExportUrl"
+              class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs active:scale-95 transition-all cursor-pointer"
+            >
+              <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>{{ deduplicateExport ? 'Export Excel (Tanpa Duplikat)' : 'Export Excel' }}</span>
+            </a>
+          </div>
         </div>
       </div>
 
