@@ -62,8 +62,7 @@ class ShoeDashboardController extends Controller
             $baseQuery->jenjang($jenjang);
         }
         if (!empty($pic)) {
-            $normPic = School::normalizePicName($pic);
-            $baseQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+            $baseQuery->whereHas('school', fn($q) => $q->byPic($pic));
         }
 
         // 1. Executive Summary KPIs
@@ -97,8 +96,7 @@ class ShoeDashboardController extends Controller
             $totalSekolahQuery->where('id', $schoolId);
         }
         if ($pic) {
-            $normPic = School::normalizePicName($pic);
-            $totalSekolahQuery->where(fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+            $totalSekolahQuery->byPic($pic);
         }
         $totalSekolah = $totalSekolahQuery->count();
 
@@ -257,15 +255,7 @@ class ShoeDashboardController extends Controller
             $schoolB = $schools[1];
         }
 
-        $existingPics = School::whereNotNull('pic_nama')
-            ->where('pic_nama', '!=', '')
-            ->distinct()
-            ->pluck('pic_nama')
-            ->map(fn($p) => School::normalizePicName($p))
-            ->filter()
-            ->toArray();
-        $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
-        sort($allPics);
+        $allPics = School::allPicOptions();
 
         $sheetStatsRaw = (clone $baseQuery)->selectRaw('
             SUM(CASE WHEN UPPER(sheet_source) LIKE "%SRD%" THEN 1 ELSE 0 END) as srd_total,

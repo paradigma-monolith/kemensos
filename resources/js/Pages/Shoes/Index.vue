@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
+import { useShoeExport } from '../../composables/useShoeExport';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -413,22 +414,21 @@ const maxMatrixTotal = computed(() => {
   return Math.max(...props.sizeMatrix.map((item) => Number(item.total) || 1));
 });
 
-// Currently selected school object
-const activeSchoolObj = computed(() => {
-  if (!selectedSchool.value) return null;
-  return props.schools.find((s) => s.id === Number(selectedSchool.value)) || null;
-});
-
-// Download Export Links
-const deduplicateExport = ref(false);
-
-const excelExportUrl = computed(() => {
-  const params = new URLSearchParams();
-  if (selectedSchool.value) params.append('school_id', selectedSchool.value);
-  if (selectedJenjang.value) params.append('jenjang', selectedJenjang.value);
-  if (deduplicateExport.value) params.append('deduplicate', '1');
-  const query = params.toString();
-  return getUrl(query ? `/shoes/export/excel?${query}` : '/shoes/export/excel');
+// Excel Export state & computed URL (supports PIC filter + deduplicate)
+const {
+  deduplicateExport,
+  exportPic,
+  activeSchoolObj,
+  excelExportUrl,
+  exportButtonLabel,
+} = useShoeExport({
+  getUrl,
+  selectedSchool,
+  selectedPic,
+  selectedJenjang,
+  schools: () => props.schools,
+  initialPic: props.filters.pic || '',
+  baseLabel: 'Export Excel',
 });
 </script>
 
@@ -498,8 +498,24 @@ const excelExportUrl = computed(() => {
             Komparasi Guru &amp; Tendik
           </a>
 
-          <!-- Export Excel Group with Deduplicate Option -->
+          <!-- Export Excel Group with PIC & Deduplicate Options -->
           <div class="inline-flex flex-wrap items-center gap-2 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80">
+              <UserCheck class="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+              <select
+                v-model="exportPic"
+                aria-label="Pilih PIC untuk Export Excel"
+                title="Pilih PIC yang ingin di-export ke Excel"
+                class="text-xs font-semibold bg-transparent text-slate-700 dark:text-slate-200 pr-2 py-0.5 focus:outline-none cursor-pointer"
+              >
+                <option value="" class="bg-white dark:bg-slate-900">Semua PIC</option>
+                <option v-for="p in picList" :key="`export-${p}`" :value="p" class="bg-white dark:bg-slate-900">
+                  PIC: {{ p }}
+                </option>
+                <option value="__none__" class="bg-white dark:bg-slate-900">Tanpa PIC</option>
+              </select>
+            </div>
+
             <label
               class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer select-none transition-colors"
               :class="deduplicateExport
@@ -520,7 +536,7 @@ const excelExportUrl = computed(() => {
               class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs active:scale-95 transition-all cursor-pointer"
             >
               <FileSpreadsheet class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{{ deduplicateExport ? 'Export Excel (Tanpa Duplikat)' : 'Export Excel' }}</span>
+              <span>{{ exportButtonLabel }}</span>
             </a>
           </div>
         </div>
@@ -828,6 +844,7 @@ const excelExportUrl = computed(() => {
               >
                 <option value="">Semua PIC</option>
                 <option v-for="p in picList" :key="p" :value="p">{{ p }}</option>
+                <option value="__none__">Tanpa PIC</option>
               </select>
             </div>
           </div>

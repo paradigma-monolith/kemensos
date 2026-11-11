@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Head, router, Link } from '@inertiajs/vue3';
 import HybridNavbar from '../../Components/HybridNavbar.vue';
 import BaseChart from '../../Components/BaseChart.vue';
+import { useShoeExport } from '../../composables/useShoeExport';
 import {
   LayoutDashboard,
   BarChart3,
@@ -106,14 +107,19 @@ const selectedJenjang = ref(props.filters.jenjang || '');
 const selectedKategori = ref(props.filters.kategori || '');
 const selectedGender = ref(props.filters.gender || '');
 const selectedPic = ref(props.filters.pic || '');
-const deduplicateExport = ref(false);
 
-const excelExportUrl = computed(() => {
-  const params = new URLSearchParams();
-  if (selectedSchool.value) params.append('school_id', selectedSchool.value);
-  if (deduplicateExport.value) params.append('deduplicate', '1');
-  const query = params.toString();
-  return getUrl(query ? `/shoes/export/excel?${query}` : '/shoes/export/excel');
+const {
+  deduplicateExport,
+  exportPic,
+  excelExportUrl,
+  exportButtonLabel,
+} = useShoeExport({
+  getUrl,
+  selectedSchool,
+  selectedPic,
+  schools: () => props.schools,
+  initialPic: props.filters.pic || '',
+  baseLabel: 'Ekspor Excel',
 });
 
 // Side-by-Side Comparator State
@@ -512,6 +518,22 @@ const schoolComparisonChartOption = computed(() => {
           </Link>
 
           <div class="inline-flex flex-wrap items-center gap-2 p-1 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div class="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80">
+              <UserCheck class="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+              <select
+                v-model="exportPic"
+                aria-label="Pilih PIC untuk Ekspor Excel"
+                title="Pilih PIC yang ingin diekspor ke Excel"
+                class="text-xs font-semibold bg-transparent text-slate-700 dark:text-slate-200 pr-2 py-0.5 focus:outline-none cursor-pointer"
+              >
+                <option value="" class="bg-white dark:bg-slate-900">Semua PIC</option>
+                <option v-for="p in pic_list" :key="`dash-export-${p}`" :value="p" class="bg-white dark:bg-slate-900">
+                  PIC: {{ p }}
+                </option>
+                <option value="__none__" class="bg-white dark:bg-slate-900">Tanpa PIC</option>
+              </select>
+            </div>
+
             <label
               class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer select-none transition-colors"
               :class="deduplicateExport
@@ -532,7 +554,7 @@ const schoolComparisonChartOption = computed(() => {
               class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs active:scale-95 transition-all cursor-pointer"
             >
               <Download class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{{ deduplicateExport ? 'Ekspor Excel (Tanpa Duplikat)' : 'Ekspor Excel' }}</span>
+              <span>{{ exportButtonLabel }}</span>
             </a>
           </div>
         </div>
@@ -587,6 +609,7 @@ const schoolComparisonChartOption = computed(() => {
                 <option v-for="p in pic_list" :key="p" :value="p">
                   {{ p }}
                 </option>
+                <option value="__none__">Tanpa PIC</option>
               </select>
             </div>
 

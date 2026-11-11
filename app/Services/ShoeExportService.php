@@ -23,9 +23,10 @@ class ShoeExportService
      *
      * @param int|null $schoolId Filter by specific school or null for all schools
      * @param bool $deduplicate Remove duplicate recipients having the same name and school
+     * @param string|null $pic Filter by PIC name (or __none__ for schools without PIC)
      * @return Spreadsheet
      */
-    public function generateRecapExcel(?int $schoolId = null, bool $deduplicate = false): Spreadsheet
+    public function generateRecapExcel(?int $schoolId = null, bool $deduplicate = false, ?string $pic = null): Spreadsheet
     {
         @ini_set('memory_limit', '1024M');
         @ini_set('max_execution_time', '300');
@@ -34,14 +35,26 @@ class ShoeExportService
         $spreadsheet = new Spreadsheet();
         $usedSheetTitles = [];
 
+        $hasPicFilter = ($pic !== null && trim($pic) !== '');
+        $isNoPicFilter = $hasPicFilter && School::isEmptyPicFilter($pic);
+        $normPicFilter = ($hasPicFilter && !$isNoPicFilter) ? School::normalizePicName($pic) : null;
+        if ($hasPicFilter && !$isNoPicFilter && ($normPicFilter === null || $normPicFilter === '')) {
+            $hasPicFilter = false;
+        }
+        $picDisplayLabel = $hasPicFilter
+            ? ($isNoPicFilter ? 'TANPA PIC' : mb_strtoupper((string) $normPicFilter))
+            : null;
+
         // Determine scope label
-        $scopeName = 'SEMUA SEKOLAH RAKYAT';
-        $filteredSchool = null;
-        if ($schoolId) {
-            $filteredSchool = School::find($schoolId);
-            if ($filteredSchool) {
-                $scopeName = strtoupper($filteredSchool->nama_sekolah);
-            }
+        $filteredSchool = $schoolId ? School::find($schoolId) : null;
+        if ($filteredSchool && $picDisplayLabel) {
+            $scopeName = strtoupper($filteredSchool->nama_sekolah) . ' (PIC: ' . $picDisplayLabel . ')';
+        } elseif ($picDisplayLabel) {
+            $scopeName = 'PIC: ' . $picDisplayLabel . ' — SEMUA SEKOLAH RAKYAT';
+        } elseif ($filteredSchool) {
+            $scopeName = strtoupper($filteredSchool->nama_sekolah);
+        } else {
+            $scopeName = 'SEMUA SEKOLAH RAKYAT';
         }
 
         // Shared Header and Total styles
@@ -78,6 +91,9 @@ class ShoeExportService
         if ($schoolId) {
             $schoolsQuery->where('id', $schoolId);
         }
+        if ($hasPicFilter) {
+            $schoolsQuery->byPic($pic);
+        }
         $schools = $schoolsQuery->orderBy('nama_sekolah')->get();
         $schoolsMap = $schools->keyBy('id');
 
@@ -88,10 +104,14 @@ class ShoeExportService
             ->orderBy('kategori')
             ->orderBy('nomor_urut');
 
-        if ($schoolId) {
-            $allRecipientsQuery->where('school_id', $schoolId);
+        if ($schoolId || $hasPicFilter) {
+            $filteredSchoolIds = $schools->pluck('id')->all();
+            $allRecipients = empty($filteredSchoolIds)
+                ? collect()
+                : $allRecipientsQuery->whereIn('school_id', $filteredSchoolIds)->get();
+        } else {
+            $allRecipients = $allRecipientsQuery->get();
         }
-        $allRecipients = $allRecipientsQuery->get();
 
         // Remove duplicate recipients with identical name and school when requested
         if ($deduplicate) {
@@ -115,9 +135,11 @@ class ShoeExportService
         $sizes = array_unique(array_merge(range(26, 46), array_map('intval', $availableSizes)));
         sort($sizes);
 
-        // Single-pass O(N) aggregation: pre-computes size, school, and cross-tab stats
+        // Single-pass O(N) aggregation: pre-computes size, school, PIC, and cross-tab stats
         $statsBySize = [];
         $statsBySchool = [];
+        $statsByPic = [];
+        $schoolPicKeys = [];
         $recipientsBySchool = [];
         $statsByJenjang = [
             'SRD' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
@@ -126,9 +148,31 @@ class ShoeExportService
             'STAFF' => ['total' => 0, 'pria' => 0, 'wanita' => 0, 'sizes' => []],
         ];
 
+        foreach ($schools as $sch) {
+            $normSchPic = School::normalizePicName($sch->pic_nama);
+            $pKey = ($normSchPic !== null && $normSchPic !== '') ? mb_strtoupper($normSchPic) : 'TANPA PIC';
+            $schoolPicKeys[$sch->id] = $pKey;
+            if (!isset($statsByPic[$pKey])) {
+                $statsByPic[$pKey] = [
+                    'pic_name' => $pKey,
+                    'schools_count' => 0,
+                    'siswa_l' => 0,
+                    'siswa_p' => 0,
+                    'staff_l' => 0,
+                    'staff_p' => 0,
+                    'pria' => 0,
+                    'wanita' => 0,
+                    'total' => 0,
+                    'sizes' => [],
+                ];
+            }
+            $statsByPic[$pKey]['schools_count']++;
+        }
+
         foreach ($allRecipients as $r) {
             $sz = (int)$r->ukuran_sepatu;
             $schId = (int)$r->school_id;
+            $pKey = $schoolPicKeys[$schId] ?? 'TANPA PIC';
             $isL = ($r->jenis_kelamin === 'L');
             $isSiswa = ($r->kategori === 'siswa');
             $isStaff = in_array($r->kategori, ['guru', 'tendik'], true);
@@ -187,43 +231,75 @@ class ShoeExportService
                 $statsBySchool[$schId]['size_counts'][$sz] = 0;
             }
 
+            if (!isset($statsByPic[$pKey])) {
+                $statsByPic[$pKey] = [
+                    'pic_name' => $pKey,
+                    'schools_count' => 0,
+                    'siswa_l' => 0,
+                    'siswa_p' => 0,
+                    'staff_l' => 0,
+                    'staff_p' => 0,
+                    'pria' => 0,
+                    'wanita' => 0,
+                    'total' => 0,
+                    'sizes' => [],
+                ];
+            }
+            if (!isset($statsByPic[$pKey]['sizes'][$sz])) {
+                $statsByPic[$pKey]['sizes'][$sz] = 0;
+            }
+
             if ($isSiswa) {
                 if ($isL) {
                     $statsBySize[$sz]['siswa_l']++;
                     $statsBySchool[$schId]['siswa_l']++;
                     $statsBySchool[$schId]['sizes'][$sz]['siswa_l']++;
+                    $statsByPic[$pKey]['siswa_l']++;
                 } else {
                     $statsBySize[$sz]['siswa_p']++;
                     $statsBySchool[$schId]['siswa_p']++;
                     $statsBySchool[$schId]['sizes'][$sz]['siswa_p']++;
+                    $statsByPic[$pKey]['siswa_p']++;
                 }
             } elseif ($isStaff) {
                 if ($isL) {
                     $statsBySize[$sz]['staff_l']++;
                     $statsBySchool[$schId]['staff_l']++;
                     $statsBySchool[$schId]['sizes'][$sz]['staff_l']++;
+                    $statsByPic[$pKey]['staff_l']++;
                 } else {
                     $statsBySize[$sz]['staff_p']++;
                     $statsBySchool[$schId]['staff_p']++;
                     $statsBySchool[$schId]['sizes'][$sz]['staff_p']++;
+                    $statsByPic[$pKey]['staff_p']++;
                 }
             }
 
             if ($isL) {
                 $statsBySize[$sz]['total_pria']++;
                 $statsBySchool[$schId]['pria']++;
+                $statsByPic[$pKey]['pria']++;
             } else {
                 $statsBySize[$sz]['total_wanita']++;
                 $statsBySchool[$schId]['wanita']++;
+                $statsByPic[$pKey]['wanita']++;
             }
 
             $statsBySize[$sz]['total']++;
             $statsBySchool[$schId]['total']++;
             $statsBySchool[$schId]['sizes'][$sz]['total']++;
             $statsBySchool[$schId]['size_counts'][$sz]++;
+            $statsByPic[$pKey]['total']++;
+            $statsByPic[$pKey]['sizes'][$sz]++;
 
             $recipientsBySchool[$schId][] = $r;
         }
+
+        uksort($statsByPic, function (string $a, string $b): int {
+            if ($a === 'TANPA PIC') return 1;
+            if ($b === 'TANPA PIC') return -1;
+            return strcmp($a, $b);
+        });
 
         // ====================================================
         // SHEET 1: REKAP UKURAN SEPATU (GLOBAL SIZE BREAKDOWN)
@@ -413,7 +489,10 @@ class ShoeExportService
             $sheetPerSchool->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             $sheetPerSchool->mergeCells('A2:M2');
-            $sheetPerSchool->setCellValue('A2', 'KEMENTERIAN SOSIAL RI — TAHUN ' . date('Y'));
+            $sheetPerSchoolSubtitle = $picDisplayLabel
+                ? 'KEMENTERIAN SOSIAL RI — PIC: ' . $picDisplayLabel . ' — TAHUN ' . date('Y')
+                : 'KEMENTERIAN SOSIAL RI — TAHUN ' . date('Y');
+            $sheetPerSchool->setCellValue('A2', $sheetPerSchoolSubtitle);
             $sheetPerSchool->getStyle('A2')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('475569');
             $sheetPerSchool->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
@@ -692,6 +771,30 @@ class ShoeExportService
         }
 
         // ====================================================
+        // SHEET TAMBAHAN: REKAP PER PIC (RINGKASAN & MATRIKS PER PIC)
+        // ====================================================
+        if (!$schoolId && $schools->isNotEmpty()) {
+            $this->appendPerPicSheet(
+                $spreadsheet,
+                $usedSheetTitles,
+                $scopeName,
+                $statsByPic,
+                $sizes,
+                $schools->count(),
+                $totSiswaL,
+                $totSiswaP,
+                $totStaffL,
+                $totStaffP,
+                $totPria,
+                $totWanita,
+                $grandTotal,
+                $headerStyleIndigo,
+                $headerStyleBlue,
+                $totalRowStyle
+            );
+        }
+
+        // ====================================================
         // DEDICATED SHEETS FOR EACH SCHOOL (INDIVIDUAL DATA)
         // ====================================================
         // Generate separate sheets for up to 30 schools if total records are within safe memory limits
@@ -878,14 +981,17 @@ class ShoeExportService
         $sheetMaster->setCellValue('G1', 'Panjang Kaki (cm)');
         $sheetMaster->setCellValue('H1', 'Ukuran Sepatu');
         $sheetMaster->setCellValue('I1', 'Jenjang / Sheet Asal');
+        $sheetMaster->setCellValue('J1', 'PIC');
 
-        $sheetMaster->getStyle('A1:I1')->applyFromArray($headerStyleEmerald);
+        $sheetMaster->getStyle('A1:J1')->applyFromArray($headerStyleEmerald);
         $sheetMaster->getRowDimension(1)->setRowHeight(24);
 
         $recRows = [];
         $noRec = 1;
         foreach ($allRecipients as $r) {
-            $schName = $schoolsMap[$r->school_id]->nama_sekolah ?? '-';
+            $schoolObj = $schoolsMap[$r->school_id] ?? null;
+            $schName = $schoolObj->nama_sekolah ?? '-';
+            $picLabel = School::normalizePicName($schoolObj->pic_nama ?? null) ?: 'Tanpa PIC';
             $recRows[] = [
                 $noRec++,
                 $this->sanitizeCellValue($schName),
@@ -896,6 +1002,7 @@ class ShoeExportService
                 $r->panjang_kaki ?? '-',
                 $r->ukuran_sepatu,
                 $this->sanitizeCellValue($r->sheet_source ?? '-'),
+                $this->sanitizeCellValue($picLabel),
             ];
         }
 
@@ -904,13 +1011,13 @@ class ShoeExportService
             $endR2 = 1 + count($recRows);
             $sheetMaster->getStyle("A2:A{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheetMaster->getStyle("D2:D{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheetMaster->getStyle("F2:I{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetMaster->getStyle("F2:J{$endR2}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
             // Memory-safe styling: apply cell borders if under 2500 rows, otherwise apply clean outline border
             if (count($recRows) <= 2500) {
-                $sheetMaster->getStyle("A2:I{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+                $sheetMaster->getStyle("A2:J{$endR2}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
             } else {
-                $sheetMaster->getStyle("A2:I{$endR2}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+                $sheetMaster->getStyle("A2:J{$endR2}")->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
             }
         }
 
@@ -925,6 +1032,7 @@ class ShoeExportService
             'G' => 18, // Panjang Kaki
             'H' => 16, // Ukuran Sepatu
             'I' => 28, // Jenjang / Sheet Asal
+            'J' => 18, // PIC
         ];
         foreach ($sheetMasterWidths as $col => $w) {
             $sheetMaster->getColumnDimension($col)->setWidth($w);
@@ -932,6 +1040,202 @@ class ShoeExportService
 
         $spreadsheet->setActiveSheetIndex(0);
         return $spreadsheet;
+    }
+
+    /**
+     * Build the "Rekap Per PIC" sheet containing PIC summary and cross-tab size matrix.
+     */
+    protected function appendPerPicSheet(
+        Spreadsheet $spreadsheet,
+        array &$usedSheetTitles,
+        string $scopeName,
+        array $statsByPic,
+        array $sizes,
+        int $totalSchoolsCount,
+        int $totSiswaL,
+        int $totSiswaP,
+        int $totStaffL,
+        int $totStaffP,
+        int $totPria,
+        int $totWanita,
+        int $grandTotal,
+        array $headerStyleIndigo,
+        array $headerStyleBlue,
+        array $totalRowStyle
+    ): void {
+        $sheetPic = $spreadsheet->createSheet();
+        $sheetPic->setTitle('Rekap Per PIC');
+        $sheetPic->setShowGridlines(true);
+        $usedSheetTitles[] = 'rekap per pic';
+
+        $sheetPic->mergeCells('A1:L1');
+        $sheetPic->setCellValue('A1', 'REKAPITULASI KEBUTUHAN PENGADAAN SEPATU PER PIC');
+        $sheetPic->getStyle('A1')->getFont()->setBold(true)->setSize(15)->getColor()->setRGB('1E293B');
+        $sheetPic->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $sheetPic->mergeCells('A2:L2');
+        $sheetPic->setCellValue('A2', $scopeName . ' — TAHUN ' . date('Y'));
+        $sheetPic->getStyle('A2')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('475569');
+        $sheetPic->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        $headers = [
+            'No',
+            'Nama PIC',
+            'Jumlah Sekolah',
+            'Siswa (L)',
+            'Siswa (P)',
+            'Guru & Tendik (L)',
+            'Guru & Tendik (P)',
+            'Total Siswa',
+            'Total Staff',
+            'Total Pria',
+            'Total Wanita',
+            'TOTAL PASANG',
+        ];
+        $sheetPic->fromArray([$headers], null, 'A4');
+        $sheetPic->getStyle('A4:L4')->applyFromArray($headerStyleIndigo);
+        $sheetPic->getRowDimension(4)->setRowHeight(26);
+
+        $rows = [];
+        $no = 1;
+        foreach ($statsByPic as $picData) {
+            $totSiswa = $picData['siswa_l'] + $picData['siswa_p'];
+            $totStaff = $picData['staff_l'] + $picData['staff_p'];
+            $rows[] = [
+                $no++,
+                $this->sanitizeCellValue($picData['pic_name']),
+                $picData['schools_count'],
+                $picData['siswa_l'],
+                $picData['siswa_p'],
+                $picData['staff_l'],
+                $picData['staff_p'],
+                $totSiswa,
+                $totStaff,
+                $picData['pria'],
+                $picData['wanita'],
+                $picData['total'],
+            ];
+        }
+
+        $startRow = 5;
+        $endRow = $startRow + count($rows) - 1;
+        if (!empty($rows)) {
+            $sheetPic->fromArray($rows, null, "A{$startRow}");
+            $sheetPic->getStyle("A{$startRow}:A{$endRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPic->getStyle("C{$startRow}:L{$endRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPic->getStyle("A{$startRow}:L{$endRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $totRow = $endRow + 1;
+        } else {
+            $totRow = $startRow;
+        }
+
+        $sheetPic->mergeCells("A{$totRow}:B{$totRow}");
+        $sheetPic->setCellValue("A{$totRow}", 'TOTAL KESELURUHAN');
+        $sheetPic->setCellValue("C{$totRow}", $totalSchoolsCount);
+        $sheetPic->setCellValue("D{$totRow}", $totSiswaL);
+        $sheetPic->setCellValue("E{$totRow}", $totSiswaP);
+        $sheetPic->setCellValue("F{$totRow}", $totStaffL);
+        $sheetPic->setCellValue("G{$totRow}", $totStaffP);
+        $sheetPic->setCellValue("H{$totRow}", $totSiswaL + $totSiswaP);
+        $sheetPic->setCellValue("I{$totRow}", $totStaffL + $totStaffP);
+        $sheetPic->setCellValue("J{$totRow}", $totPria);
+        $sheetPic->setCellValue("K{$totRow}", $totWanita);
+        $sheetPic->setCellValue("L{$totRow}", $grandTotal);
+        $sheetPic->getStyle("A{$totRow}:L{$totRow}")->applyFromArray($totalRowStyle);
+        $sheetPic->getRowDimension($totRow)->setRowHeight(24);
+
+        // Table 2: Size matrix breakdown per PIC
+        $mTitleRow = $totRow + 3;
+        $sheetPic->setCellValue("A{$mTitleRow}", 'MATRIKS DISTRIBUSI UKURAN SEPATU PER PIC');
+        $sheetPic->getStyle("A{$mTitleRow}")->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('1E293B');
+
+        $mHeaderRow = $mTitleRow + 1;
+        $activeSizes = [];
+        foreach ($sizes as $s) {
+            $colSum = 0;
+            foreach ($statsByPic as $picData) {
+                $colSum += $picData['sizes'][$s] ?? 0;
+            }
+            if ($colSum === 0 && ($s < 26 || $s > 46)) {
+                continue;
+            }
+            $activeSizes[] = $s;
+        }
+
+        $mHeaders = ['No', 'Nama PIC', 'Jumlah Sekolah'];
+        foreach ($activeSizes as $s) {
+            $mHeaders[] = (string)$s;
+        }
+        $mHeaders[] = 'TOTAL PASANG';
+
+        $sheetPic->fromArray([$mHeaders], null, "A{$mHeaderRow}");
+        $lastColLetter = $this->getColumnLetter(count($mHeaders));
+        $sheetPic->getStyle("A{$mHeaderRow}:{$lastColLetter}{$mHeaderRow}")->applyFromArray($headerStyleBlue);
+        $sheetPic->getRowDimension($mHeaderRow)->setRowHeight(24);
+
+        $mRows = [];
+        $noM = 1;
+        $colSums = array_fill_keys($activeSizes, 0);
+        foreach ($statsByPic as $picData) {
+            $rowItem = [
+                $noM++,
+                $this->sanitizeCellValue($picData['pic_name']),
+                $picData['schools_count'],
+            ];
+            $picTotal = 0;
+            foreach ($activeSizes as $s) {
+                $cnt = $picData['sizes'][$s] ?? 0;
+                $rowItem[] = $cnt;
+                $colSums[$s] += $cnt;
+                $picTotal += $cnt;
+            }
+            $rowItem[] = $picTotal;
+            $mRows[] = $rowItem;
+        }
+
+        $mDataStartRow = $mHeaderRow + 1;
+        if (!empty($mRows)) {
+            $sheetPic->fromArray($mRows, null, "A{$mDataStartRow}");
+            $mDataEndRow = $mDataStartRow + count($mRows) - 1;
+            $sheetPic->getStyle("A{$mDataStartRow}:A{$mDataEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPic->getStyle("C{$mDataStartRow}:{$lastColLetter}{$mDataEndRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheetPic->getStyle("A{$mDataStartRow}:{$lastColLetter}{$mDataEndRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+            $mTotalRow = $mDataEndRow + 1;
+        } else {
+            $mTotalRow = $mDataStartRow;
+        }
+
+        $mTotalCells = ['TOTAL KESELURUHAN', '', $totalSchoolsCount];
+        foreach ($activeSizes as $s) {
+            $mTotalCells[] = $colSums[$s];
+        }
+        $mTotalCells[] = $grandTotal;
+
+        $sheetPic->fromArray([$mTotalCells], null, "A{$mTotalRow}");
+        $sheetPic->mergeCells("A{$mTotalRow}:B{$mTotalRow}");
+        $sheetPic->getStyle("A{$mTotalRow}:{$lastColLetter}{$mTotalRow}")->applyFromArray($totalRowStyle);
+        $sheetPic->getRowDimension($mTotalRow)->setRowHeight(24);
+
+        $sheetPic->getColumnDimension('A')->setWidth(6);
+        $sheetPic->getColumnDimension('B')->setWidth(26);
+        $sheetPic->getColumnDimension('C')->setWidth(16);
+        $sheetPic->getColumnDimension('D')->setWidth(12);
+        $sheetPic->getColumnDimension('E')->setWidth(12);
+        $sheetPic->getColumnDimension('F')->setWidth(18);
+        $sheetPic->getColumnDimension('G')->setWidth(18);
+        $sheetPic->getColumnDimension('H')->setWidth(14);
+        $sheetPic->getColumnDimension('I')->setWidth(14);
+        $sheetPic->getColumnDimension('J')->setWidth(14);
+        $sheetPic->getColumnDimension('K')->setWidth(14);
+        $sheetPic->getColumnDimension('L')->setWidth(16);
+
+        for ($c = 4; $c <= 3 + count($activeSizes); $c++) {
+            $colLet = $this->getColumnLetter($c);
+            if ($sheetPic->getColumnDimension($colLet)->getWidth() <= 0) {
+                $sheetPic->getColumnDimension($colLet)->setWidth(8);
+            }
+        }
+        $sheetPic->getColumnDimension($lastColLetter)->setWidth(16);
     }
 
     /**

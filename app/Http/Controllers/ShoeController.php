@@ -36,15 +36,7 @@ class ShoeController extends Controller
         $jenjang = $request->query('jenjang');
 
         // Master PIC list combining default constant and any existing database values
-        $existingPics = School::whereNotNull('pic_nama')
-            ->where('pic_nama', '!=', '')
-            ->distinct()
-            ->pluck('pic_nama')
-            ->map(fn($p) => School::normalizePicName($p))
-            ->filter()
-            ->toArray();
-        $allPics = array_values(array_unique(array_merge(School::DEFAULT_PICS, $existingPics)));
-        sort($allPics);
+        $allPics = School::allPicOptions();
 
         // 1. Overall & Filtered Stats
         $statsQuery = ShoeRecipient::query();
@@ -52,8 +44,7 @@ class ShoeController extends Controller
             $statsQuery->where('school_id', $schoolId);
         }
         if ($pic) {
-            $normPic = School::normalizePicName($pic);
-            $statsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+            $statsQuery->whereHas('school', fn($q) => $q->byPic($pic));
         }
         if ($kategori) {
             $statsQuery->where('kategori', $kategori);
@@ -80,8 +71,7 @@ class ShoeController extends Controller
             $levelStatsQuery->where('school_id', $schoolId);
         }
         if ($pic) {
-            $normPic = School::normalizePicName($pic);
-            $levelStatsQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+            $levelStatsQuery->whereHas('school', fn($q) => $q->byPic($pic));
         }
 
         $sheetStatsRaw = (clone $levelStatsQuery)->selectRaw('
@@ -146,8 +136,7 @@ class ShoeController extends Controller
             $matrixQuery->where('school_id', $schoolId);
         }
         if ($pic) {
-            $normPic = School::normalizePicName($pic);
-            $matrixQuery->whereHas('school', fn($q) => $q->where('pic_nama', $normPic)->orWhere('pic_nama', 'PIC ' . $normPic));
+            $matrixQuery->whereHas('school', fn($q) => $q->byPic($pic));
         }
         if ($kategori) {
             $matrixQuery->where('kategori', $kategori);
@@ -194,10 +183,7 @@ class ShoeController extends Controller
             ->when($gender, fn($q) => $q->where('jenis_kelamin', $gender))
             ->when($jenjang, fn($q) => $q->jenjang($jenjang))
             ->when($onlyAnomaly, fn($q) => $q->anomaly())
-            ->when($pic, function ($q, $pic) {
-                $norm = School::normalizePicName($pic);
-                $q->whereHas('school', fn($sq) => $sq->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm));
-            })
+            ->when($pic, fn($q, $pic) => $q->whereHas('school', fn($sq) => $sq->byPic($pic)))
             ->when($search, function ($q, $search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->where('nama_lengkap', 'like', "%{$search}%")
@@ -215,10 +201,7 @@ class ShoeController extends Controller
 
         // 4. Schools list
         $schools = School::withCount(['recipients', 'importBatches'])
-            ->when($pic, function ($q, $pic) {
-                $norm = School::normalizePicName($pic);
-                $q->where('pic_nama', $norm)->orWhere('pic_nama', 'PIC ' . $norm);
-            })
+            ->when($pic, fn($q, $pic) => $q->byPic($pic))
             ->orderBy('nama_sekolah')
             ->get();
 
@@ -378,20 +361,16 @@ class ShoeController extends Controller
         @set_time_limit(300);
 
         $schoolId = $request->query('school_id');
+        $rawPic = $request->query('pic');
+        $picFilter = ($rawPic !== null && trim((string) $rawPic) !== '') ? trim((string) $rawPic) : null;
         $deduplicate = $request->boolean('deduplicate') || $request->boolean('remove_duplicates');
         $spreadsheet = $this->exportService->generateRecapExcel(
             $schoolId ? (int)$schoolId : null,
-            $deduplicate
+            $deduplicate,
+            $picFilter
         );
 
-        $schoolPrefix = 'Semua_Sekolah';
-        if ($schoolId) {
-            $school = School::find($schoolId);
-            if ($school) {
-                $schoolPrefix = str_replace(' ', '_', $school->nama_sekolah);
-            }
-        }
-        $fileName = "Rekap_Sepatu_{$schoolPrefix}_" . date('Ymd_His') . ".xlsx";
+        $fileName = $this->buildExcelExportFilename($schoolId ? (int)$schoolId : null, $picFilter);
 
         return response()->streamDownload(function () use ($spreadsheet) {
             @ini_set('memory_limit', '1024M');
@@ -411,6 +390,38 @@ class ShoeController extends Controller
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Cache-Control' => 'max-age=0',
         ]);
+    }
+
+    /**
+     * Build a safe download filename reflecting school and PIC export filters.
+     */
+    protected function buildExcelExportFilename(?int $schoolId, ?string $picFilter): string
+    {
+        $parts = ['Rekap_Sepatu'];
+
+        if ($picFilter !== null) {
+            if (School::isEmptyPicFilter($picFilter)) {
+                $parts[] = 'PIC_Tanpa_PIC';
+            } else {
+                $normPic = School::normalizePicName($picFilter) ?? $picFilter;
+                $picSlug = trim((string) preg_replace('/[^A-Za-z0-9_-]+/', '_', $normPic), '_');
+                if ($picSlug !== '') {
+                    $parts[] = 'PIC_' . $picSlug;
+                }
+            }
+        }
+
+        if ($schoolId) {
+            $school = School::find($schoolId);
+            if ($school) {
+                $schoolSlug = trim((string) preg_replace('/[^A-Za-z0-9_-]+/', '_', $school->nama_sekolah), '_');
+                $parts[] = $schoolSlug !== '' ? $schoolSlug : ('Sekolah_' . $schoolId);
+            }
+        } elseif ($picFilter === null) {
+            $parts[] = 'Semua_Sekolah';
+        }
+
+        return implode('_', $parts) . '_' . date('Ymd_His') . '.xlsx';
     }
 
     /**

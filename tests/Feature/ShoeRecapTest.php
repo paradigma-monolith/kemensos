@@ -724,6 +724,99 @@ class ShoeRecapTest extends TestCase
         $response = $this->actingAs($user)->get('/shoes/export/excel?deduplicate=1');
         $response->assertStatus(200);
     }
+
+    public function test_excel_export_supports_pic_filter_and_includes_rekap_per_pic_sheet(): void
+    {
+        $user = User::factory()->create();
+        $schoolAzriel = School::create(['nama_sekolah' => 'SR Cimahi', 'kota' => 'Cimahi', 'pic_nama' => 'AZRIEL']);
+        $schoolWendy = School::create(['nama_sekolah' => 'SR Bogor', 'kota' => 'Bogor', 'pic_nama' => 'PIC WENDY']);
+        $schoolNoPic = School::create(['nama_sekolah' => 'SR Depok', 'kota' => 'Depok', 'pic_nama' => null]);
+
+        $batch = ShoeImportBatch::create([
+            'school_id' => $schoolAzriel->id,
+            'file_name' => 'pic_test.xlsx',
+            'imported_by' => $user->id,
+        ]);
+
+        ShoeRecipient::create([
+            'school_id' => $schoolAzriel->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Siswa Azriel',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 40,
+            'sheet_source' => 'SEPATU SISWA SRMP',
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $schoolWendy->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Guru Wendy',
+            'jenis_kelamin' => 'P',
+            'jabatan' => 'Guru',
+            'kategori' => 'guru',
+            'ukuran_sepatu' => 38,
+            'sheet_source' => 'SEPATU TENDIK,GURU',
+        ]);
+        ShoeRecipient::create([
+            'school_id' => $schoolNoPic->id,
+            'batch_id' => $batch->id,
+            'nomor_urut' => 1,
+            'nama_lengkap' => 'Siswa Tanpa PIC',
+            'jenis_kelamin' => 'L',
+            'jabatan' => 'Siswa',
+            'kategori' => 'siswa',
+            'ukuran_sepatu' => 39,
+            'sheet_source' => 'SEPATU SISWA SRD',
+        ]);
+
+        $exportService = app(\App\Services\ShoeExportService::class);
+
+        // 1. Global export includes "Rekap Per PIC" sheet and PIC column in Daftar Penerima
+        $globalSpreadsheet = $exportService->generateRecapExcel();
+        $this->assertContains('Rekap Per PIC', $globalSpreadsheet->getSheetNames());
+
+        $rekapPicSheet = $globalSpreadsheet->getSheetByName('Rekap Per PIC');
+        $this->assertNotNull($rekapPicSheet);
+        $this->assertEquals('AZRIEL', $rekapPicSheet->getCell('B5')->getValue());
+        $this->assertEquals('WENDY', $rekapPicSheet->getCell('B6')->getValue());
+        $this->assertEquals('TANPA PIC', $rekapPicSheet->getCell('B7')->getValue());
+        $this->assertEquals(3, $rekapPicSheet->getCell('C8')->getValue()); // 3 schools total
+        $this->assertEquals(3, $rekapPicSheet->getCell('L8')->getValue()); // 3 pairs total
+
+        $globalMaster = $globalSpreadsheet->getSheetByName('Daftar Penerima');
+        $this->assertEquals('PIC', $globalMaster->getCell('J1')->getValue());
+
+        // 2. PIC-filtered export (accepts "PIC ..." prefix and case variants)
+        $azrielSpreadsheet = $exportService->generateRecapExcel(null, false, 'PIC azriel');
+        $azrielSheets = $azrielSpreadsheet->getSheetNames();
+        $this->assertContains('SR Cimahi', $azrielSheets);
+        $this->assertNotContains('SR Bogor', $azrielSheets);
+        $this->assertNotContains('SR Depok', $azrielSheets);
+
+        $azrielMaster = $azrielSpreadsheet->getSheetByName('Daftar Penerima');
+        $this->assertEquals(2, $azrielMaster->getHighestDataRow());
+        $this->assertEquals('Siswa Azriel', $azrielMaster->getCell('C2')->getValue());
+        $this->assertEquals('AZRIEL', $azrielMaster->getCell('J2')->getValue());
+
+        // 3. Unassigned PIC filter ("__none__")
+        $noPicSpreadsheet = $exportService->generateRecapExcel(null, false, '__none__');
+        $noPicMaster = $noPicSpreadsheet->getSheetByName('Daftar Penerima');
+        $this->assertEquals(2, $noPicMaster->getHighestDataRow());
+        $this->assertEquals('Siswa Tanpa PIC', $noPicMaster->getCell('C2')->getValue());
+        $this->assertEquals('Tanpa PIC', $noPicMaster->getCell('J2')->getValue());
+
+        // 4. HTTP endpoints return expected filenames and 200 status
+        $resAzriel = $this->actingAs($user)->get('/shoes/export/excel?pic=AZRIEL');
+        $resAzriel->assertStatus(200);
+        $this->assertStringContainsString('Rekap_Sepatu_PIC_AZRIEL_', (string) $resAzriel->headers->get('content-disposition'));
+
+        $resNoPic = $this->actingAs($user)->get('/shoes/export/excel?pic=__none__');
+        $resNoPic->assertStatus(200);
+        $this->assertStringContainsString('Rekap_Sepatu_PIC_Tanpa_PIC_', (string) $resNoPic->headers->get('content-disposition'));
+    }
 }
 
 
